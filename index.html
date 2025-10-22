@@ -2,24 +2,45 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>答題網站</title>
+  <title>老師聯絡簿小工具</title>
+  <style>
+    body { font-family: "Microsoft JhengHei", sans-serif; margin: 40px; background: #f6f8fa; }
+    h1 { text-align: center; }
+    .box { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
+    input, textarea, button { width: 100%; margin-top: 10px; padding: 10px; font-size: 16px; }
+    #output { white-space: pre-wrap; background: #f0f0f0; padding: 15px; margin-top: 20px; border-radius: 8px; }
+  </style>
 </head>
 <body>
-  <h1>小測驗</h1>
-  <p>1. 2 + 2 = ?</p>
-  <button onclick="check(1)">3</button>
-  <button onclick="check(2)">4</button>
-  <button onclick="check(3)">5</button>
+  <h1>📔 聯絡簿產生器</h1>
+  <div class="box">
+    <label>班級：</label>
+    <input type="text" id="class" placeholder="例如：三年二班">
 
-  <p id="result"></p>
+    <label>日期：</label>
+    <input type="date" id="date">
+
+    <label>聯絡簿內容：</label>
+    <textarea id="content" rows="5" placeholder="例如：1. 國語第3課預習..."></textarea>
+
+    <button onclick="generate()">✍ 產生聯絡簿</button>
+
+    <div id="output"></div>
+  </div>
 
   <script>
-    function check(ans){
-      if(ans === 2){
-        document.getElementById('result').innerText = "✅ 正確！";
-      }else{
-        document.getElementById('result').innerText = "❌ 錯了！";
+    function generate(){
+      const cls = document.getElementById('class').value;
+      const date = document.getElementById('date').value;
+      const content = document.getElementById('content').value;
+
+      if(!cls || !date || !content){
+        alert("請完整填寫資料！");
+        return;
       }
+
+      const text = `📅 日期：${date}\n🏫 班級：${cls}\n📔 聯絡簿內容：\n${content}`;
+      document.getElementById('output').innerText = text;
     }
   </script>
 </body>
