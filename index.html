@@ -2,45 +2,87 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>老師聯絡簿小工具</title>
+  <title>聯絡簿系統</title>
   <style>
     body { font-family: "Microsoft JhengHei", sans-serif; margin: 40px; background: #f6f8fa; }
-    h1 { text-align: center; }
     .box { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
     input, textarea, button { width: 100%; margin-top: 10px; padding: 10px; font-size: 16px; }
     #output { white-space: pre-wrap; background: #f0f0f0; padding: 15px; margin-top: 20px; border-radius: 8px; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h1>📔 聯絡簿產生器</h1>
-  <div class="box">
-    <label>班級：</label>
-    <input type="text" id="class" placeholder="例如：三年二班">
 
-    <label>日期：</label>
-    <input type="date" id="date">
+  <div id="loginBox" class="box">
+    <h2>登入系統</h2>
+    <input type="text" id="username" placeholder="帳號">
+    <input type="password" id="password" placeholder="密碼">
+    <button onclick="login()">登入</button>
+  </div>
 
-    <label>聯絡簿內容：</label>
-    <textarea id="content" rows="5" placeholder="例如：1. 國語第3課預習..."></textarea>
+  <div id="teacherBox" class="box hidden">
+    <h2>👩‍🏫 教師端</h2>
+    <p>歡迎，<span id="teacherName"></span> 老師</p>
+    <textarea id="teacherNote" rows="5" placeholder="請輸入聯絡簿內容..."></textarea>
+    <button onclick="saveNote()">儲存聯絡簿</button>
+    <button onclick="logout()">登出</button>
+  </div>
 
-    <button onclick="generate()">✍ 產生聯絡簿</button>
-
-    <div id="output"></div>
+  <div id="studentBox" class="box hidden">
+    <h2>👨‍🎓 學生端</h2>
+    <p>歡迎，<span id="studentName"></span> 同學</p>
+    <div id="noteDisplay">尚無聯絡簿內容</div>
+    <button onclick="logout()">登出</button>
   </div>
 
   <script>
-    function generate(){
-      const cls = document.getElementById('class').value;
-      const date = document.getElementById('date').value;
-      const content = document.getElementById('content').value;
+    // 模擬帳號資料（可改成你自己的）
+    const accounts = [
+      { username: "teacher1", password: "1234", role: "teacher", name: "王小明" },
+      { username: "student1", password: "5678", role: "student", name: "李小華" }
+    ];
 
-      if(!cls || !date || !content){
-        alert("請完整填寫資料！");
+    let currentUser = null;
+    let contactBookContent = "";  // 暫存在前端
+
+    function login(){
+      const u = document.getElementById('username').value;
+      const p = document.getElementById('password').value;
+
+      const user = accounts.find(a => a.username === u && a.password === p);
+      if(!user){
+        alert("帳號或密碼錯誤！");
         return;
       }
 
-      const text = `📅 日期：${date}\n🏫 班級：${cls}\n📔 聯絡簿內容：\n${content}`;
-      document.getElementById('output').innerText = text;
+      currentUser = user;
+      document.getElementById('loginBox').classList.add('hidden');
+
+      if(user.role === "teacher"){
+        document.getElementById('teacherBox').classList.remove('hidden');
+        document.getElementById('teacherName').innerText = user.name;
+      }else{
+        document.getElementById('studentBox').classList.remove('hidden');
+        document.getElementById('studentName').innerText = user.name;
+        updateStudentView();
+      }
+    }
+
+    function saveNote(){
+      contactBookContent = document.getElementById('teacherNote').value;
+      alert("✅ 聯絡簿已儲存！");
+    }
+
+    function updateStudentView(){
+      const note = contactBookContent || "尚無聯絡簿內容";
+      document.getElementById('noteDisplay').innerText = note;
+    }
+
+    function logout(){
+      currentUser = null;
+      document.getElementById('teacherBox').classList.add('hidden');
+      document.getElementById('studentBox').classList.add('hidden');
+      document.getElementById('loginBox').classList.remove('hidden');
     }
   </script>
 </body>
