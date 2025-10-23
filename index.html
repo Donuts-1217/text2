@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（多連結＋自動超連結）</title>
+<title>聯絡簿系統（最高權限+教師功能）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
@@ -87,210 +87,91 @@ const provider = new GoogleAuthProvider();
 let role = "student";
 let isAdmin = false;
 
-async function googleLogin() {
-  try { await signInWithPopup(auth, provider); } 
-  catch(e) { alert("登入失敗：" + e.message); console.error(e); }
-}
+// 登入
+async function googleLogin() { try { await signInWithPopup(auth, provider); } catch(e){ alert("登入失敗："+e.message);} }
+async function logout(){ await signOut(auth); location.reload(); }
 
-async function logout() { await signOut(auth); location.reload(); }
-
-function handleEnter(e){
-  if(e.key === "Enter" && !e.shiftKey){
-    e.preventDefault();
-    addNote(false);
-  }
-}
-
-function previewImage(event){
-  const preview = document.getElementById("preview");
-  const file = event.target.files[0];
-  if(file){
-    const reader = new FileReader();
-    reader.onload = e=>{ preview.src = e.target.result; preview.style.display="block"; };
-    reader.readAsDataURL(file);
-  } else { preview.src=""; preview.style.display="none"; }
-}
-
-// 將文字自動轉超連結
-function linkify(text){
-  const urlPattern = /(https?:\/\/[^\s]+)/g;
-  return text.replace(urlPattern, "<a href='$1' target='_blank'>$1</a>");
-}
+function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(false); } }
+function previewImage(event){ const preview = document.getElementById("preview"); const file = event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src="";preview.style.display="none";} }
+function linkify(text){ const urlPattern=/(https?:\/\/[^\s]+)/g; return text.replace(urlPattern,"<a href='$1' target='_blank'>$1</a>"); }
 
 // 新增筆記
 async function addNote(update=false, docId=null, div=null){
   const content = document.getElementById("note").value.trim();
-  const link = document.getElementById("linkInput").value.trim() || null;
-  const fileInput = document.getElementById("imageInput");
+  const link = document.getElementById("linkInput").value.trim()||null;
+  const fileInput=document.getElementById("imageInput");
   if(!content && !fileInput.files.length && !link) return alert("請輸入內容、圖片或連結！");
-
-  let imageUrl = null;
-  if(fileInput.files.length>0){
-    const file = fileInput.files[0];
-    const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef,file);
-    imageUrl = await getDownloadURL(storageRef);
-  }
-
+  let imageUrl=null;
+  if(fileInput.files.length>0){ const file=fileInput.files[0]; const storageRef=ref(storage, `notes/${Date.now()}_${file.name}`); await uploadBytes(storageRef,file); imageUrl=await getDownloadURL(storageRef);}
   if(update && docId && div){
-    const text = div.innerText;
-    await setDoc(doc(db,"notes",docId),{
-      author: div.dataset.author,
-      email: div.dataset.email,
-      content: text,
-      imageUrl: div.dataset.newImage || div.dataset.image || imageUrl || null,
-      links: div.dataset.links ? JSON.parse(div.dataset.links) : (link?[link]:[]),
-      time: new Date().toLocaleString()
-    });
-    div.dataset.image = div.dataset.newImage || div.dataset.image || imageUrl || null;
-    div.dataset.newImage = "";
+    const text=div.innerText;
+    await setDoc(doc(db,"notes",docId),{author:div.dataset.author,email:div.dataset.email,content:text,imageUrl:div.dataset.newImage||div.dataset.image||imageUrl||null,links:div.dataset.links?JSON.parse(div.dataset.links):(link?[link]:[]),time:new Date().toLocaleString()});
+    div.dataset.image=div.dataset.newImage||div.dataset.image||imageUrl||null; div.dataset.newImage="";
   } else {
-    const newLinks = link ? [link] : [];
-    await addDoc(collection(db,"notes"),{
-      author: auth.currentUser.displayName,
-      email: auth.currentUser.email,
-      content: content,
-      imageUrl: imageUrl,
-      links: newLinks,
-      time: new Date().toLocaleString()
-    });
-
+    const newLinks=link?[link]:[];
+    await addDoc(collection(db,"notes"),{author:auth.currentUser.displayName,email:auth.currentUser.email,content:content,imageUrl:imageUrl,links:newLinks,time:new Date().toLocaleString()});
     // 保留最近10筆
-    const notesSnapshot = await getDocs(collection(db,"notes"));
-    const docs = notesSnapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
-    if(docs.length>10){
-      for(let i=10;i<docs.length;i++){
-        await deleteDoc(doc(db,"notes",docs[i].id));
-      }
-    }
+    const notesSnapshot=await getDocs(collection(db,"notes"));
+    const docs=notesSnapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
+    if(docs.length>10){ for(let i=10;i<docs.length;i++){ await deleteDoc(doc(db,"notes",docs[i].id)); } }
   }
-
-  document.getElementById("note").value="";
-  document.getElementById("linkInput").value="";
-  fileInput.value="";
-  document.getElementById("preview").style.display="none";
+  document.getElementById("note").value=""; document.getElementById("linkInput").value=""; fileInput.value=""; document.getElementById("preview").style.display="none";
 }
 
-// 最高權限教師管理
-async function addTeacher(){
-  const email = document.getElementById("newTeacherEmail").value.trim();
-  if(!email) return alert("請輸入Email");
-  await setDoc(doc(db,"users",email), {role:"teacher"});
-  alert(email+" 已設為教師");
-}
+// 教師帳號管理
+async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email) return alert("請輸入Email"); await setDoc(doc(db,"users",email),{role:"teacher"}); alert(email+" 已設為教師");}
+async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email) return alert("請輸入Email"); const userRef=doc(db,"users",email); await setDoc(userRef,{role:"student"}); alert(email+" 已移除教師權限");}
 
-async function removeTeacher(){
-  const email = document.getElementById("deleteTeacherEmail").value.trim();
-  if(!email) return alert("請輸入Email");
-  const userRef = doc(db,"users",email);
-  await setDoc(userRef, {role:"student"});
-  alert(email+" 已移除教師權限");
-}
+// 筆記多連結管理
+async function addLink(docId){ const input=document.getElementById(`newLink_${docId}`); const url=input.value.trim(); if(!url) return alert("請輸入連結"); const noteRef=doc(db,"notes",docId); const noteSnap=await getDoc(noteRef); const data=noteSnap.data(); const links=data.links||[]; links.push(url); await setDoc(noteRef,{...data,links:links}); input.value="";}
+async function deleteLink(docId,index){ if(!confirm("確定要刪除此連結嗎？")) return; const noteRef=doc(db,"notes",docId); const noteSnap=await getDoc(noteRef); const data=noteSnap.data(); const links=data.links||[]; links.splice(index,1); await setDoc(noteRef,{...data,links:links});}
+async function editLink(docId,index){ const newUrl=prompt("編輯連結",""); if(!newUrl) return; const noteRef=doc(db,"notes",docId); const noteSnap=await getDoc(noteRef); const data=noteSnap.data(); const links=data.links||[]; links[index]=newUrl; await setDoc(noteRef,{...data,links:links});}
 
 // 刪除筆記
-async function deleteNote(docId){
-  if(confirm("確定要刪除此筆記嗎？")) await deleteDoc(doc(db,"notes",docId));
-}
+async function deleteNote(docId){ if(confirm("確定要刪除此筆記嗎？")) await deleteDoc(doc(db,"notes",docId));}
 
-// 新增/編輯/刪除多連結
-async function addLink(docId){
-  const input = document.getElementById(`newLink_${docId}`);
-  const url = input.value.trim();
-  if(!url) return alert("請輸入連結");
-  
-  const noteRef = doc(db,"notes",docId);
-  const noteSnap = await getDoc(noteRef);
-  const data = noteSnap.data();
-  const links = data.links || [];
-  links.push(url);
-  await setDoc(noteRef,{...data, links: links});
-  input.value="";
-}
-
-async function deleteLink(docId,index){
-  if(!confirm("確定要刪除此連結嗎？")) return;
-  const noteRef = doc(db,"notes",docId);
-  const noteSnap = await getDoc(noteRef);
-  const data = noteSnap.data();
-  const links = data.links || [];
-  links.splice(index,1);
-  await setDoc(noteRef,{...data, links: links});
-}
-
-async function editLink(docId,index){
-  const newUrl = prompt("編輯連結", "");
-  if(!newUrl) return;
-  const noteRef = doc(db,"notes",docId);
-  const noteSnap = await getDoc(noteRef);
-  const data = noteSnap.data();
-  const links = data.links || [];
-  links[index] = newUrl;
-  await setDoc(noteRef,{...data, links: links});
-}
-
-// 監聽登入狀態
-onAuthStateChanged(auth, async (user)=>{
+// 登入監聽
+onAuthStateChanged(auth,async(user)=>{
   if(user){
     document.getElementById("login-section").style.display="none";
     document.getElementById("app").style.display="block";
-    document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
-
-    // 取得角色
-    const userRef = doc(db,"users",user.email);
-    const userSnap = await getDoc(userRef);
+    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
+    const userRef=doc(db,"users",user.email);
+    const userSnap=await getDoc(userRef);
     if(!userSnap.exists()){
-      await setDoc(userRef, {role:"student"});
-      role = "student";
-    } else role = userSnap.data().role;
-
-    // 老師顯示面板
+      if(user.email==="chianghansen0302@gmail.com"){ await setDoc(userRef,{role:"teacher"}); role="teacher"; isAdmin=true; }
+      else{ await setDoc(userRef,{role:"student"}); role="student"; }
+    } else{ role=userSnap.data().role; if(user.email==="chianghansen0302@gmail.com") isAdmin=true; }
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
-    // 最高權限
-    if(user.email==="chianghansen0302@gmail.com"){ document.getElementById("admin-panel").style.display="block"; isAdmin=true; }
+    if(isAdmin) document.getElementById("admin-panel").style.display="block";
 
-    // 監聽筆記
-    const q = query(collection(db,"notes"));
+    const q=query(collection(db,"notes"));
     onSnapshot(q,snapshot=>{
-      const messages = snapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
-      let html = "", histHtml="";
+      const messages=snapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
+      let html="", histHtml="";
       messages.forEach(doc=>{
-        const data = doc.data();
-        const linksHTML = (data.links||[]).map((l,i)=>{
-          return `<div class='link-div'>
-                    <a href='${l}' target='_blank'>${l}</a>
-                    ${role==="teacher"?`<button onclick='editLink("${doc.id}",${i})'>編輯</button>
-                    <button onclick='deleteLink("${doc.id}",${i})'>刪除</button>`:""}
-                  </div>`;
-        }).join("");
-
-        const imageHTML = data.imageUrl ? `<img src='${data.imageUrl}'>` : "";
-
-        const noteDiv = `<div class='note' data-author='${data.author}' data-email='${data.email}' data-image='${data.imageUrl||""}' data-links='${JSON.stringify(data.links||[])}'>
+        const data=doc.data();
+        const linksHTML=(data.links||[]).map((l,i)=>`<div class='link-div'><a href='${l}' target='_blank'>${l}</a>${role==="teacher"?`<button onclick='editLink("${doc.id}",${i})'>編輯</button><button onclick='deleteLink("${doc.id}",${i})'>刪除</button>`:""}</div>`).join("");
+        const imageHTML=data.imageUrl?`<img src='${data.imageUrl}'>`:"";
+        const noteDiv=`<div class='note' data-author='${data.author}' data-email='${data.email}' data-image='${data.imageUrl||""}' data-links='${JSON.stringify(data.links||[])}'>
             <div class='editable' contenteditable='${role==="teacher"}'>${linkify(data.content).replace(/\n/g,"<br>")}</div>
             ${imageHTML}
             ${linksHTML}
             <small>${data.author} | ${data.time}</small>
             ${role==="teacher"?`<button onclick='deleteNote("${doc.id}")'>刪除筆記</button>`:""}
           </div>`;
-
-        html += noteDiv;
-        histHtml += noteDiv;
+        html+=noteDiv; histHtml+=noteDiv;
       });
-      document.getElementById("messages").innerHTML = html;
-      document.getElementById("history").innerHTML = histHtml;
+      document.getElementById("messages").innerHTML=html;
+      document.getElementById("history").innerHTML=histHtml;
     });
-
   }
 });
 
-window.googleLogin = googleLogin;
-window.logout = logout;
-window.addNote = addNote;
-window.addTeacher = addTeacher;
-window.removeTeacher = removeTeacher;
-window.addLink = addLink;
-window.deleteLink = deleteLink;
-window.editLink = editLink;
+window.googleLogin=googleLogin; window.logout=logout; window.addNote=addNote;
+window.addTeacher=addTeacher; window.removeTeacher=removeTeacher;
+window.addLink=addLink; window.deleteLink=deleteLink; window.editLink=editLink;
+window.deleteNote=deleteNote;
 </script>
 </body>
 </html>
