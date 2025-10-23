@@ -156,7 +156,6 @@ onAuthStateChanged(auth,async(user)=>{
     const userDoc=await getDoc(userRef);
     if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} 
     else{ role=userDoc.data().role; }
-    
     if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
@@ -248,46 +247,48 @@ function listenRecycle(){
 async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
 async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
 
-// 編輯聯絡簿
-async function editNote(id){
+// 編輯聯絡簿（表單版）
+function editNote(id){
+  const noteDiv = document.getElementById(`text-${id}`).parentElement;
   const textDiv = document.getElementById(`text-${id}`);
   const linkDiv = document.getElementById(`link-${id}`);
   const imgEl = document.getElementById(`img-${id}`);
 
-  const newText = prompt("編輯文字內容", textDiv.innerText);
-  if(newText===null) return;
+  const textVal = textDiv.innerText;
+  const linkVal = linkDiv ? linkDiv.innerText : "";
+  const imgSrc = imgEl ? imgEl.src : "";
 
-  let newLink = linkDiv ? prompt("編輯連結", linkDiv.innerText) : "";
-  if(newLink===null) newLink = (linkDiv ? linkDiv.innerText : "");
-
-  let newImageUrl = imgEl ? imgEl.src : "";
-  const changeImg = confirm("是否要更新圖片？按「取消」保持原圖");
-  if(changeImg){
-    const fileInput = document.createElement("input");
-    fileInput.type="file";
-    fileInput.accept="image/*";
-    fileInput.onchange = async e=>{
-      const file = e.target.files[0];
-      if(file){
-        const imgRef=ref(storage,"notes/"+Date.now()+"_"+file.name);
-        await uploadBytes(imgRef,file);
-        newImageUrl = await getDownloadURL(imgRef);
-        await setDoc(doc(db,"notes",id),{
-          text: newText,
-          link: newLink,
-          image: newImageUrl
-        },{merge:true});
-      }
-    };
-    fileInput.click();
-  } else {
-    await setDoc(doc(db,"notes",id),{
-      text: newText,
-      link: newLink,
-      image: newImageUrl
-    },{merge:true});
-  }
+  noteDiv.innerHTML = `
+    <textarea id="edit-text-${id}">${textVal}</textarea><br>
+    <input type="url" id="edit-link-${id}" placeholder="連結" value="${linkVal}"><br>
+    <input type="file" id="edit-image-${id}" accept="image/*"><br>
+    ${imgSrc ? `<img id="edit-img-preview-${id}" src="${imgSrc}" style="max-width:100px;margin-top:4px;">` : ""}
+    <button onclick="saveEdit('${id}')">儲存</button>
+    <button onclick="cancelEdit('${id}')">取消</button>
+  `;
 }
+
+async function saveEdit(id){
+  const newText = document.getElementById(`edit-text-${id}`).value.trim();
+  const newLink = document.getElementById(`edit-link-${id}`).value.trim();
+  const fileInput = document.getElementById(`edit-image-${id}`);
+  let newImageUrl = document.getElementById(`edit-img-preview-${id}`)?.src || "";
+
+  if(fileInput && fileInput.files[0]){
+    const file = fileInput.files[0];
+    const imgRef = ref(storage, "notes/"+Date.now()+"_"+file.name);
+    await uploadBytes(imgRef, file);
+    newImageUrl = await getDownloadURL(imgRef);
+  }
+
+  await setDoc(doc(db,"notes",id),{
+    text: newText,
+    link: newLink,
+    image: newImageUrl
+  }, {merge:true});
+}
+
+function cancelEdit(id){ listenNotes(); }
 
 // 教師管理
 async function addTeacher(){
