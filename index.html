@@ -1,245 +1,215 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <title>聯絡簿系統（Google 登入版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
-    h1 { color: #2c3e50; }
-    button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top:5px; }
-    button:hover { background: #3367D6; }
-    textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
-    input[type=file] { margin-top: 10px; }
-    #preview { max-width: 100%; margin-top: 5px; border-radius: 6px; display: none; }
-    #messages, #history { margin-top: 25px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
-    .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    .note img { max-width: 100%; margin-top: 5px; border-radius: 6px; }
-    small { color: gray; }
-    hr { margin: 25px 0; border: 0.5px solid #ccc; }
-  </style>
+<meta charset="UTF-8">
+<title>聯絡簿系統（Google 登入版）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
+h1 { color: #2c3e50; }
+button { padding: 8px 16px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin:2px; }
+button:hover { background: #3367D6; }
+textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; resize: none; }
+input[type=file] { margin-top: 10px; }
+#preview { max-width: 100%; margin-top: 5px; border-radius: 6px; display: none; }
+#messages, #history { margin-top: 25px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
+.note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.note img { max-width: 100%; margin-top: 5px; border-radius: 6px; }
+small { color: gray; }
+hr { margin: 25px 0; border: 0.5px solid #ccc; }
+</style>
 </head>
 <body>
-  <h1>📘 聯絡簿系統</h1>
+<h1>📘 聯絡簿系統</h1>
 
-  <div id="login-section">
-    <button onclick="googleLogin();">使用 Google 登入</button>
+<div id="login-section">
+  <button onclick="googleLogin();">使用 Google 登入</button>
+</div>
+
+<div id="app" style="display:none;">
+  <p id="user-info"></p>
+  <button onclick="logout()">登出</button>
+
+  <div id="teacher-panel" style="display:none;">
+    <h3>✏️ 老師寫聯絡簿</h3>
+    <textarea id="note" placeholder="輸入聯絡簿內容..." onkeydown="handleEnter(event)"></textarea><br>
+    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
+    <img id="preview"><br>
+    <button id="addButton" onclick="addNote()">送出</button>
   </div>
 
-  <div id="app" style="display:none;">
-    <p id="user-info"></p>
-    <button onclick="logout()">登出</button>
+  <div id="student-panel">
+    <h3>📖 最新聯絡簿</h3>
+    <div id="messages"></div>
 
-    <div id="teacher-panel" style="display:none;">
-      <h3>✏️ 老師寫聯絡簿</h3>
-      <textarea id="note" placeholder="輸入聯絡簿內容..."></textarea><br>
-      <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
-      <img id="preview"><br>
-      <button id="addButton" onclick="addNote()">送出</button>
-    </div>
+    <hr>
 
-    <div id="student-panel">
-      <h3>📖 最新聯絡簿</h3>
-      <div id="messages"></div>
-
-      <hr>
-
-      <h3>🕒 歷史紀錄</h3>
-      <div id="history"></div>
-    </div>
+    <h3>🕒 歷史紀錄</h3>
+    <div id="history"></div>
   </div>
+</div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { 
-      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
-    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { 
-      getFirestore, collection, addDoc, doc, getDoc, setDoc, query, onSnapshot, getDocs, deleteDoc 
-    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-    import { 
-      getStorage, ref, uploadBytes, getDownloadURL 
-    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, doc, getDoc, setDoc, query, onSnapshot, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-      authDomain: "text-585a6.firebaseapp.com",
-      projectId: "text-585a6",
-      storageBucket: "text-585a6.appspot.com",
-      messagingSenderId: "789195223699",
-      appId: "1:789195223699:web:847902083fb646bda25366",
-      measurementId: "G-FL11M47EFP"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
+  authDomain: "text-585a6.firebaseapp.com",
+  projectId: "text-585a6",
+  storageBucket: "text-585a6.appspot.com",
+  messagingSenderId: "789195223699",
+  appId: "1:789195223699:web:847902083fb646bda25366",
+  measurementId: "G-FL11M47EFP"
+};
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
-    const provider = new GoogleAuthProvider();
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const provider = new GoogleAuthProvider();
 
-    let latestDocId = null;
-    let role = "student";
+let editingDocId = null;
+let role = "student";
 
-    async function googleLogin() {
-      try { await signInWithPopup(auth, provider); } 
-      catch(e) { alert("登入失敗：" + e.message); console.error(e); }
-    }
+async function googleLogin() {
+  try { await signInWithPopup(auth, provider); } 
+  catch(e) { alert("登入失敗：" + e.message); console.error(e); }
+}
 
-    async function logout() {
-      await signOut(auth);
-      location.reload();
-    }
+async function logout() { await signOut(auth); location.reload(); }
 
-    function previewImage(event) {
-      const preview = document.getElementById("preview");
-      const file = event.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = e => {
-          preview.src = e.target.result;
-          preview.style.display = "block";
-        };
-        reader.readAsDataURL(file);
-      } else {
-        preview.src = "";
-        preview.style.display = "none";
-      }
-    }
+function handleEnter(e){
+  if(e.key === "Enter" && !e.shiftKey){
+    e.preventDefault();
+    addNote(editingDocId? true : false);
+  }
+}
 
-    async function addNote(update=false) {
-      const content = document.getElementById("note").value.trim();
-      const fileInput = document.getElementById("imageInput");
-      if (!content && !fileInput.files.length) return alert("請輸入內容或選擇圖片！");
+function previewImage(event){
+  const preview = document.getElementById("preview");
+  const file = event.target.files[0];
+  if(file){
+    const reader = new FileReader();
+    reader.onload = e=>{ preview.src = e.target.result; preview.style.display="block"; };
+    reader.readAsDataURL(file);
+  } else { preview.src=""; preview.style.display="none"; }
+}
 
-      let imageUrl = null;
-      if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        imageUrl = await getDownloadURL(storageRef);
-      }
+async function addNote(update=false){
+  const content = document.getElementById("note").value.trim();
+  const fileInput = document.getElementById("imageInput");
+  if(!content && !fileInput.files.length) return alert("請輸入內容或選擇圖片！");
 
-      if (update && latestDocId) {
-        await setDoc(doc(db, "notes", latestDocId), {
-          author: auth.currentUser.displayName,
-          email: auth.currentUser.email,
-          content: content,
-          imageUrl: imageUrl,
-          time: new Date().toLocaleString()
-        });
-        latestDocId = null;
-        document.getElementById("addButton").innerText = "送出";
-      } else {
-        const docRef = await addDoc(collection(db, "notes"), {
-          author: auth.currentUser.displayName,
-          email: auth.currentUser.email,
-          content: content,
-          imageUrl: imageUrl,
-          time: new Date().toLocaleString()
-        });
-        latestDocId = docRef.id;
+  let imageUrl = null;
+  if(fileInput.files.length>0){
+    const file = fileInput.files[0];
+    const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
+    await uploadBytes(storageRef,file);
+    imageUrl = await getDownloadURL(storageRef);
+  }
 
-        // 保留最新 10 筆
-        const notesSnapshot = await getDocs(collection(db, "notes"));
-        const docs = notesSnapshot.docs.sort((a,b)=> new Date(b.data().time) - new Date(a.data().time));
-        if(docs.length>10){
-          for(let i=10;i<docs.length;i++){
-            await deleteDoc(doc(db,"notes",docs[i].id));
-          }
-        }
-      }
-
-      document.getElementById("note").value = "";
-      fileInput.value = "";
-      document.getElementById("preview").style.display = "none";
-    }
-
-    function enableEdit(docId, data){
-      latestDocId = docId;
-      document.getElementById("note").value = data.content || "";
-      if(data.imageUrl){
-        document.getElementById("preview").src = data.imageUrl;
-        document.getElementById("preview").style.display = "block";
-      } else {
-        document.getElementById("preview").style.display = "none";
-      }
-      document.getElementById("addButton").innerText = "更新";
-    }
-
-    async function deleteNote(docId){
-      if(confirm("確定要刪除此歷史紀錄嗎？")){
-        await deleteDoc(doc(db,"notes",docId));
-      }
-    }
-
-    function renderNotes(snapshot){
-      const messagesEl = document.getElementById("messages");
-      const historyEl = document.getElementById("history");
-      messagesEl.innerHTML = "";
-      historyEl.innerHTML = "";
-
-      const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time) - new Date(a.data().time));
-      let first = true;
-      docs.forEach(doc => {
-        const data = doc.data();
-        let html = `<div class='note'><b>${data.author}</b>（${data.email}）<br>`;
-        if(data.content) html += `${data.content}<br>`;
-        if(data.imageUrl) html += `<img src="${data.imageUrl}"><br>`;
-        html += `<small>${data.time}</small></div>`;
-
-        if(first){
-          messagesEl.innerHTML = html;
-          if(role==="teacher"){
-            messagesEl.innerHTML += `<button onclick='enableEdit("${doc.id}", ${JSON.stringify(data)})'>編輯</button>`;
-          }
-          first = false;
-        } else {
-          let deleteBtn = '';
-          if(role==="teacher"){
-            deleteBtn = `<button onclick='deleteNote("${doc.id}")'>刪除</button>`;
-          }
-          historyEl.innerHTML = `<div class='note'>${html}${deleteBtn}</div>` + historyEl.innerHTML;
-        }
-      });
-    }
-
-    onAuthStateChanged(auth, async (user)=>{
-      if(user){
-        document.getElementById("login-section").style.display = "none";
-        document.getElementById("app").style.display = "block";
-        document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
-
-        const userRef = doc(db, "users", user.email);
-        const userDoc = await getDoc(userRef);
-
-        const teacherEmails = ["chianghansen0302@gmail.com","1130404@gm.khjh.hc.edu.tw"];
-        if(teacherEmails.includes(user.email)){
-          role="teacher";
-        } else if(!userDoc.exists()){
-          await setDoc(userRef,{role:"student"});
-          role="student";
-        } else {
-          role = userDoc.data().role;
-        }
-
-        if(role==="teacher"){
-          document.getElementById("teacher-panel").style.display = "block";
-        }
-
-        const notesQuery = query(collection(db,"notes"));
-        onSnapshot(notesQuery, renderNotes);
-
-      } else {
-        console.log("尚未登入");
-      }
+  if(update && editingDocId){
+    await setDoc(doc(db,"notes",editingDocId),{
+      author: auth.currentUser.displayName,
+      email: auth.currentUser.email,
+      content: content,
+      imageUrl: imageUrl,
+      time: new Date().toLocaleString()
+    });
+    editingDocId=null;
+    document.getElementById("addButton").innerText="送出";
+  } else {
+    const docRef = await addDoc(collection(db,"notes"),{
+      author: auth.currentUser.displayName,
+      email: auth.currentUser.email,
+      content: content,
+      imageUrl: imageUrl,
+      time: new Date().toLocaleString()
     });
 
-    window.googleLogin = googleLogin;
-    window.logout = logout;
-    window.addNote = addNote;
-    window.previewImage = previewImage;
-    window.enableEdit = enableEdit;
-    window.deleteNote = deleteNote;
-  </script>
+    // 保留最新10筆
+    const notesSnapshot = await getDocs(collection(db,"notes"));
+    const docs = notesSnapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
+    if(docs.length>10){
+      for(let i=10;i<docs.length;i++){
+        await deleteDoc(doc(db,"notes",docs[i].id));
+      }
+    }
+  }
+
+  document.getElementById("note").value="";
+  fileInput.value="";
+  document.getElementById("preview").style.display="none";
+}
+
+function enableEdit(docId,data){
+  editingDocId=docId;
+  document.getElementById("note").value=data.content||"";
+  if(data.imageUrl){
+    document.getElementById("preview").src=data.imageUrl;
+    document.getElementById("preview").style.display="block";
+  } else document.getElementById("preview").style.display="none";
+  document.getElementById("addButton").innerText="更新";
+}
+
+async function deleteNote(docId){ if(confirm("確定要刪除此筆記嗎？")) await deleteDoc(doc(db,"notes",docId)); }
+
+function renderNotes(snapshot){
+  const messagesEl = document.getElementById("messages");
+  const historyEl = document.getElementById("history");
+  messagesEl.innerHTML="";
+  historyEl.innerHTML="";
+
+  const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time)-new Date(a.data().time));
+  let first=true;
+  docs.forEach(doc=>{
+    const data=doc.data();
+    let html=`<div class='note'><b>${data.author}</b>（${data.email}）<br>`;
+    if(data.content) html+=`${data.content}<br>`;
+    if(data.imageUrl) html+=`<img src="${data.imageUrl}"><br>`;
+    html+=`<small>${data.time}</small></div>`;
+
+    let buttons="";
+    if(role==="teacher"){
+      buttons=`<button onclick='enableEdit("${doc.id}", ${JSON.stringify(data)})'>編輯</button>
+               <button onclick='deleteNote("${doc.id}")'>刪除</button>`;
+    }
+
+    if(first){
+      messagesEl.innerHTML=html+buttons;
+      first=false;
+    } else {
+      historyEl.innerHTML=`<div class='note'>${html}${buttons}</div>`+historyEl.innerHTML;
+    }
+  });
+}
+
+onAuthStateChanged(auth,async user=>{
+  if(user){
+    document.getElementById("login-section").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
+
+    const teacherEmails=["chianghansen0302@gmail.com","1130404@gm.khjh.hc.edu.tw"];
+    if(teacherEmails.includes(user.email)) role="teacher";
+
+    if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
+
+    const notesQuery=query(collection(db,"notes"));
+    onSnapshot(notesQuery, renderNotes);
+  }
+});
+
+window.googleLogin=googleLogin;
+window.logout=logout;
+window.handleEnter=handleEnter;
+window.previewImage=previewImage;
+window.addNote=addNote;
+window.enableEdit=enableEdit;
+window.deleteNote=deleteNote;
+</script>
 </body>
 </html>
