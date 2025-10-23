@@ -161,17 +161,17 @@ onAuthStateChanged(auth,async(user)=>{
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
     if(role==="teacher") document.getElementById("recycle-section").style.display="block";
-    
+
     nickname=localStorage.getItem('nickname')||user.displayName||'我';
     document.getElementById("nicknameInput").value=nickname;
 
-    listenNotes();
-    listenRecycle();
-    listenChat(); // 啟動聊天室
+    listenNotes(); 
+    listenRecycle(); 
+    listenChat();
   }
 });
 
-// 聯絡簿功能
+// 新增聯絡簿
 async function addNote(){
   const text=document.getElementById("note").value.trim();
   const link=document.getElementById("linkInput").value.trim();
@@ -210,11 +210,14 @@ function listenNotes(){
       if(data.deleted) return;
       const div=document.createElement("div");
       div.className="note";
-      div.innerHTML=`<div>${data.text}</div>
-        ${data.link?`<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
-        ${data.image?`<img src="${data.image}">`:''}`;
+      div.innerHTML=`<div id="text-${doc.id}">${data.text}</div>
+        ${data.link?`<div class="link-div" id="link-${doc.id}"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
+        ${data.image?`<img id="img-${doc.id}" src="${data.image}">`:''}`;
       if(role==="teacher"){
-        div.innerHTML+=`<button onclick="deleteNote('${doc.id}')">刪除</button>`;
+        div.innerHTML+=`
+          <button onclick="deleteNote('${doc.id}')">刪除</button>
+          <button onclick="editNote('${doc.id}')">編輯</button>
+        `;
       }
       messages.appendChild(div);
     });
@@ -241,8 +244,50 @@ function listenRecycle(){
   });
 }
 
+// 刪除/復原
 async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
 async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
+
+// 編輯聯絡簿
+async function editNote(id){
+  const textDiv = document.getElementById(`text-${id}`);
+  const linkDiv = document.getElementById(`link-${id}`);
+  const imgEl = document.getElementById(`img-${id}`);
+
+  const newText = prompt("編輯文字內容", textDiv.innerText);
+  if(newText===null) return;
+
+  let newLink = linkDiv ? prompt("編輯連結", linkDiv.innerText) : "";
+  if(newLink===null) newLink = (linkDiv ? linkDiv.innerText : "");
+
+  let newImageUrl = imgEl ? imgEl.src : "";
+  const changeImg = confirm("是否要更新圖片？按「取消」保持原圖");
+  if(changeImg){
+    const fileInput = document.createElement("input");
+    fileInput.type="file";
+    fileInput.accept="image/*";
+    fileInput.onchange = async e=>{
+      const file = e.target.files[0];
+      if(file){
+        const imgRef=ref(storage,"notes/"+Date.now()+"_"+file.name);
+        await uploadBytes(imgRef,file);
+        newImageUrl = await getDownloadURL(imgRef);
+        await setDoc(doc(db,"notes",id),{
+          text: newText,
+          link: newLink,
+          image: newImageUrl
+        },{merge:true});
+      }
+    };
+    fileInput.click();
+  } else {
+    await setDoc(doc(db,"notes",id),{
+      text: newText,
+      link: newLink,
+      image: newImageUrl
+    },{merge:true});
+  }
+}
 
 // 教師管理
 async function addTeacher(){
