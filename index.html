@@ -7,11 +7,14 @@
   <style>
     body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
     h1 { color: #2c3e50; }
-    button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top:5px; }
     button:hover { background: #3367D6; }
     textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
+    input[type=file] { margin-top: 10px; }
+    #preview { max-width: 100%; margin-top: 5px; border-radius: 6px; display: none; }
     #messages, #history { margin-top: 25px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
     .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .note img { max-width: 100%; margin-top: 5px; border-radius: 6px; }
     small { color: gray; }
     hr { margin: 25px 0; border: 0.5px solid #ccc; }
   </style>
@@ -30,6 +33,8 @@
     <div id="teacher-panel" style="display:none;">
       <h3>✏️ 老師寫聯絡簿</h3>
       <textarea id="note" placeholder="輸入聯絡簿內容..."></textarea><br>
+      <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
+      <img id="preview"><br>
       <button onclick="addNote()">送出</button>
     </div>
 
@@ -50,14 +55,17 @@
       getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { 
-      getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc, query, orderBy 
+      getFirestore, collection, addDoc, doc, getDoc, setDoc, query, orderBy, onSnapshot, getDocs, deleteDoc 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { 
+      getStorage, ref, uploadBytes, getDownloadURL 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
       authDomain: "text-585a6.firebaseapp.com",
       projectId: "text-585a6",
-      storageBucket: "text-585a6.firebasestorage.app",
+      storageBucket: "text-585a6.appspot.com",
       messagingSenderId: "789195223699",
       appId: "1:789195223699:web:847902083fb646bda25366",
       measurementId: "G-FL11M47EFP"
@@ -66,19 +74,12 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
-    console.log("Firebase script 已載入");
-
     async function googleLogin() {
-      console.log("googleLogin() 被呼叫");
-      try {
-        await signInWithPopup(auth, provider);
-        console.log("登入成功");
-      } catch (e) {
-        console.error("登入錯誤：", e);
-        alert("登入失敗：" + e.message);
-      }
+      try { await signInWithPopup(auth, provider); } 
+      catch(e) { alert("登入失敗：" + e.message); console.error(e); }
     }
 
     async function logout() {
@@ -86,49 +87,78 @@
       location.reload();
     }
 
+    function previewImage(event) {
+      const preview = document.getElementById("preview");
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          preview.src = e.target.result;
+          preview.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+      } else {
+        preview.src = "";
+        preview.style.display = "none";
+      }
+    }
+
     async function addNote() {
       const content = document.getElementById("note").value.trim();
-      if (!content) return alert("請輸入內容！");
+      const fileInput = document.getElementById("imageInput");
+      if (!content && !fileInput.files.length) return alert("請輸入內容或選擇圖片！");
+
+      let imageUrl = null;
+      if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        imageUrl = await getDownloadURL(storageRef);
+      }
+
       await addDoc(collection(db, "notes"), {
         author: auth.currentUser.displayName,
         email: auth.currentUser.email,
         content: content,
+        imageUrl: imageUrl,
         time: new Date().toLocaleString()
       });
+
       document.getElementById("note").value = "";
-      loadNotes();
+      fileInput.value = "";
+      document.getElementById("preview").style.display = "none";
+
+      // 🔹 保留最新 10 筆
+      const notesSnapshot = await getDocs(collection(db, "notes"));
+      const docs = notesSnapshot.docs.sort((a, b) => new Date(b.data().time) - new Date(a.data().time));
+      if (docs.length > 10) {
+        for (let i = 10; i < docs.length; i++) {
+          await deleteDoc(doc(db, "notes", docs[i].id));
+        }
+      }
     }
 
-    async function loadNotes() {
-      const q = query(collection(db, "notes"), orderBy("time", "desc"));
-      const querySnapshot = await getDocs(q);
-
+    function renderNotes(snapshot) {
       const messagesEl = document.getElementById("messages");
       const historyEl = document.getElementById("history");
       messagesEl.innerHTML = "";
       historyEl.innerHTML = "";
 
       let first = true;
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const html = `
-          <div class='note'>
-            <b>${data.author}</b>（${data.email}）<br>
-            ${data.content}<br>
-            <small>${data.time}</small>
-          </div>`;
-        if (first) {
-          messagesEl.innerHTML = html;
-          first = false;
-        } else {
-          historyEl.innerHTML += html;
-        }
-      });
+      snapshot.docs.sort((a,b) => new Date(b.data().time) - new Date(a.data().time))
+        .forEach(doc => {
+          const data = doc.data();
+          let html = `<div class='note'><b>${data.author}</b>（${data.email}）<br>`;
+          if (data.content) html += `${data.content}<br>`;
+          if (data.imageUrl) html += `<img src="${data.imageUrl}"><br>`;
+          html += `<small>${data.time}</small></div>`;
+          if (first) { messagesEl.innerHTML = html; first = false; } 
+          else { historyEl.innerHTML += html; }
+        });
     }
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        console.log("使用者登入：", user.email);
         document.getElementById("login-section").style.display = "none";
         document.getElementById("app").style.display = "block";
         document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
@@ -137,8 +167,6 @@
         const userDoc = await getDoc(userRef);
 
         let role = "student";
-
-        // 🔹 特定教師帳號清單
         const teacherEmails = [
           "chianghansen0302@gmail.com",
           "1130404@gm.khjh.hc.edu.tw"
@@ -156,7 +184,10 @@
           document.getElementById("teacher-panel").style.display = "block";
         }
 
-        loadNotes();
+        // 🔹 即時同步監聽（只抓最新 10 筆）
+        const notesQuery = query(collection(db, "notes"));
+        onSnapshot(notesQuery, renderNotes);
+
       } else {
         console.log("尚未登入");
       }
@@ -165,6 +196,7 @@
     window.googleLogin = googleLogin;
     window.logout = logout;
     window.addNote = addNote;
+    window.previewImage = previewImage;
   </script>
 </body>
 </html>
