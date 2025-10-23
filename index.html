@@ -18,7 +18,15 @@ a{color:#4285F4; word-break:break-all;}
 .link-div{margin-top:2px;}
 
 /* 聊天室樣式 */
-#chatWindow{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#f2f5fa;z-index:1000;flex-direction:column;}
+#chatWindow{
+  display:none;
+  position:fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  background:#f2f5fa;
+  z-index:1000;
+  flex-direction:column;
+}
 #chatBox{flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column;}
 .chat-container{display:flex; margin-bottom:6px;}
 .chat-container.me{justify-content:flex-end;}
@@ -133,7 +141,7 @@ function previewImage(event){
 }
 
 // 聊天室開關與暱稱儲存
-function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=win.style.display==="none"?"flex":"none"; }
+function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=(win.style.display==="none" || win.style.display==="")?"flex":"none"; }
 function closeChat(){ document.getElementById("chatWindow").style.display="none"; }
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
 
@@ -148,134 +156,132 @@ onAuthStateChanged(auth,async(user)=>{
     const userDoc=await getDoc(userRef);
     if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} 
     else{ role=userDoc.data().role; }
-
+    
     if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
     if(role==="teacher") document.getElementById("recycle-section").style.display="block";
-
+    
     nickname=localStorage.getItem('nickname')||user.displayName||'我';
     document.getElementById("nicknameInput").value=nickname;
 
-    loadNotes();
-    listenChat();
+    listenNotes();
+    listenRecycle();
+    listenChat(); // 啟動聊天室訊息監聽
   }
 });
 
-// 新增聯絡簿
+// 聯絡簿功能
 async function addNote(){
-  const noteText = document.getElementById("note").value.trim();
-  const link = document.getElementById("linkInput").value.trim();
-  const imgFile = document.getElementById("imageInput").files[0];
+  const text=document.getElementById("note").value.trim();
+  const link=document.getElementById("linkInput").value.trim();
+  const imageFile=document.getElementById("imageInput").files[0];
+  if(!text && !link && !imageFile) return alert("請輸入內容");
 
-  if(!noteText && !imgFile && !link) return alert("請輸入內容或上傳圖片/連結");
-
-  let imgUrl = "";
-  if(imgFile){
-    const storageRef = ref(storage, `notes/${Date.now()}_${imgFile.name}`);
-    await uploadBytes(storageRef, imgFile);
-    imgUrl = await getDownloadURL(storageRef);
+  let imageUrl="";
+  if(imageFile){
+    const imgRef=ref(storage,"notes/"+Date.now()+"_"+imageFile.name);
+    await uploadBytes(imgRef,imageFile);
+    imageUrl=await getDownloadURL(imgRef);
   }
 
   await addDoc(collection(db,"notes"),{
-    text: noteText,
-    link: link || "",
-    img: imgUrl,
-    author: auth.currentUser.email,
-    timestamp: Date.now(),
-    deleted: false
+    text,
+    link,
+    image:imageUrl,
+    author:auth.currentUser.email,
+    timestamp:Date.now(),
+    deleted:false
   });
-
   document.getElementById("note").value="";
   document.getElementById("linkInput").value="";
   document.getElementById("imageInput").value="";
   document.getElementById("preview").style.display="none";
 }
 
-// 刪除或復原單篇聯絡簿
-async function toggleDeleteNote(docId, currentStatus){
-  const noteRef = doc(db,"notes",docId);
-  await setDoc(noteRef, { deleted: !currentStatus }, { merge:true });
-}
-
-// 載入聯絡簿並顯示回收站
-function loadNotes(){
-  const notesCol = collection(db,"notes");
-  const q = query(notesCol, orderBy("timestamp","desc"));
-  onSnapshot(q,(snapshot)=>{
-    const messagesDiv=document.getElementById("messages");
-    const recycleDiv=document.getElementById("recycle");
-    messagesDiv.innerHTML=""; recycleDiv.innerHTML="";
+// 監聽聯絡簿
+function listenNotes(){
+  const q=query(collection(db,"notes"),orderBy("timestamp","desc"));
+  onSnapshot(q,snapshot=>{
+    const messages=document.getElementById("messages");
+    messages.innerHTML="";
     snapshot.forEach(doc=>{
-      const data = doc.data();
-      const div = document.createElement("div");
-      div.className = "note";
-      div.innerHTML = `
-        ${data.text ? `<p>${data.text}</p>` : ""}
-        ${data.link ? `<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>` : ""}
-        ${data.img ? `<img src="${data.img}">` : ""}
-        <small>作者: ${data.author}</small>
-      `;
-
-      // 老師看到刪除/復原按鈕
+      const data=doc.data();
+      if(data.deleted) return; // 刪除的先不顯示
+      const div=document.createElement("div");
+      div.className="note";
+      div.innerHTML=`<div>${data.text}</div>
+        ${data.link?`<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
+        ${data.image?`<img src="${data.image}">`:''}`;
       if(role==="teacher"){
-        const btn = document.createElement("button");
-        btn.style.marginTop = "4px";
-        btn.innerText = data.deleted ? "復原" : "刪除";
-        btn.onclick = ()=> toggleDeleteNote(doc.id, data.deleted);
-        div.appendChild(btn);
+        div.innerHTML+=`<button onclick="deleteNote('${doc.id}')">刪除</button>`;
       }
-
-      if(data.deleted){
-        if(role==="teacher") recycleDiv.appendChild(div);
-      } else {
-        messagesDiv.appendChild(div);
-      }
+      messages.appendChild(div);
     });
   });
 }
 
-// 教師帳號管理
-async function addTeacher(){
-  const email = document.getElementById("newTeacherEmail").value.trim();
-  if(!email) return;
-  await setDoc(doc(db,"users",email), { role:"teacher" });
-  alert("新增教師成功！");
-}
-async function removeTeacher(){
-  const email = document.getElementById("deleteTeacherEmail").value.trim();
-  if(!email) return;
-  await setDoc(doc(db,"users",email), { role:"student" });
-  alert("刪除教師成功！");
+// 回收站
+function listenRecycle(){
+  const q=query(collection(db,"notes"),orderBy("timestamp","desc"));
+  onSnapshot(q,snapshot=>{
+    const recycle=document.getElementById("recycle");
+    recycle.innerHTML="";
+    snapshot.forEach(doc=>{
+      const data=doc.data();
+      if(!data.deleted) return;
+      const div=document.createElement("div");
+      div.className="note";
+      div.innerHTML=`<div>${data.text}</div>
+        ${data.link?`<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
+        ${data.image?`<img src="${data.image}">`:''}
+        <button onclick="restoreNote('${doc.id}')">復原</button>`;
+      recycle.appendChild(div);
+    });
+  });
 }
 
-// 聊天室即時監聽
+async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
+async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
+
+// 教師管理（最高權限）
+async function addTeacher(){
+  const email=document.getElementById("newTeacherEmail").value.trim();
+  if(!email) return;
+  await setDoc(doc(db,"users",email),{role:"teacher"});
+  alert("新增教師成功");
+}
+async function removeTeacher(){
+  const email=document.getElementById("deleteTeacherEmail").value.trim();
+  if(!email) return;
+  await setDoc(doc(db,"users",email),{role:"student"});
+  alert("刪除教師成功");
+}
+
+// 聊天室監聽
 function listenChat(){
-  const chatCol = collection(db,"chat");
-  const q = query(chatCol, orderBy("timestamp","asc"));
-  onSnapshot(q,(snapshot)=>{
-    const chatBox = document.getElementById("chatBox");
+  const q=query(collection(db,"chat"),orderBy("timestamp","asc"));
+  onSnapshot(q,snapshot=>{
+    const chatBox=document.getElementById("chatBox");
     chatBox.innerHTML="";
     snapshot.forEach(doc=>{
-      const data = doc.data();
-      const div = document.createElement("div");
-      div.className = (data.author===auth.currentUser.email) ? "chat-container me" : "chat-container other";
-      div.innerHTML = `
-        <div class="chat-msg">
-          <span class="chat-nickname">${data.nickname}</span>
-          <span class="chat-content">${data.message}</span>
-          <span class="chat-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
-        </div>
-      `;
+      const data=doc.data();
+      const div=document.createElement("div");
+      div.className=(data.author===auth.currentUser.email)?"chat-container me":"chat-container other";
+      div.innerHTML=`<div class="chat-msg">
+        <span class="chat-nickname">${data.nickname}</span>
+        <span class="chat-content">${data.message}</span>
+        <span class="chat-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
+      </div>`;
       chatBox.appendChild(div);
-      chatBox.scrollTop = chatBox.scrollHeight;
+      chatBox.scrollTop=chatBox.scrollHeight;
     });
   });
 }
 
 // 發送聊天訊息
 async function sendChat(){
-  const msg = document.getElementById("chatInput").value.trim();
+  const msg=document.getElementById("chatInput").value.trim();
   if(!msg) return;
   await addDoc(collection(db,"chat"),{
     nickname,
