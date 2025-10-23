@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（完整版）</title>
+<title>聯絡簿系統（完整版+全螢幕聊天室）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
@@ -18,8 +18,8 @@ a { color:#4285F4; word-break: break-all; }
 .link-div { margin-top:2px; }
 
 /* 聊天室樣式 */
-#chatWindow { display:none; position:fixed; bottom:80px; right:20px; width:300px; height:0; background:#fff; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2); z-index:999; flex-direction:column; overflow:hidden; transition:height 0.3s ease;}
-#chatBox { flex:1; overflow-y:auto; padding:8px;}
+#chatWindow { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#f2f5fa; z-index:999; flex-direction:column; }
+#chatBox { flex:1; overflow-y:auto; padding:10px; }
 #chatBox div{ margin-bottom:4px; display:flex; width:100%; }
 .chat-msg{ padding:6px 10px; border-radius:10px; max-width:70%; word-break:break-word; }
 .chat-nickname{ font-weight:bold; font-size:14px; margin-bottom:2px; }
@@ -71,16 +71,16 @@ a { color:#4285F4; word-break: break-all; }
 <!-- 浮動聊天室按鈕 -->
 <button id="chatBtn" style="position:fixed;bottom:20px;right:20px;border-radius:50%;width:50px;height:50px;font-size:24px;z-index:999;">💬</button>
 
-<!-- 聊天室視窗 -->
+<!-- 全螢幕聊天室 -->
 <div id="chatWindow">
-  <div style="padding:6px;background:#4285F4;color:white;border-top-left-radius:8px;border-top-right-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+  <div style="padding:10px; background:#4285F4; color:white; display:flex; justify-content:space-between; align-items:center;">
     <span>學生聊天室</span>
-    <input id="nicknameInput" type="text" placeholder="暱稱" style="width:120px;" onblur="saveNickname()">
-    <button style="background:#f44336;padding:2px 6px;font-size:12px;" onclick="toggleChat()">X</button>
+    <input id="nicknameInput" type="text" placeholder="暱稱" style="width:150px;" onblur="saveNickname()">
+    <button style="background:#f44336;padding:4px 8px;" onclick="toggleChat()">X</button>
   </div>
   <div id="chatBox"></div>
-  <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" style="resize:none;height:50px;padding:4px;" onkeydown="handleChatEnter(event)"></textarea>
-  <button onclick="sendChat()">送出</button>
+  <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" style="resize:none;height:60px;padding:6px;margin:10px;" onkeydown="handleChatEnter(event)"></textarea>
+  <button onclick="sendChat()" style="margin-bottom:10px;">送出</button>
 </div>
 
 <script type="module">
@@ -136,8 +136,7 @@ async function removeTeacher(){ const email=document.getElementById("deleteTeach
 
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname);}}
 
-function toggleChat(){ const win=document.getElementById("chatWindow"); if(win.style.display==="none" || win.style.height==="0px"){ win.style.display="flex"; setTimeout(()=>{ win.style.height="400px"; },10);} else{ win.style.height="0"; setTimeout(()=>{ win.style.display="none"; },300);} }
-document.getElementById("chatBtn").addEventListener("click", toggleChat);
+function toggleChat(){ const win=document.getElementById("chatWindow"); if(win.style.display==="none"){ win.style.display="flex"; } else{ win.style.display="none"; } }
 
 async function sendChat(){ const text=document.getElementById("chatInput").value.trim(); if(!text)return; await addDoc(collection(db,"chat"),{author:auth.currentUser.email,nickname:nickname,content:text,time:new Date().toLocaleString(),deleted:false}); document.getElementById("chatInput").value="";}
 
@@ -151,7 +150,7 @@ function renderNotes(){
     const docs=snap.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
     docs.forEach(docSnap=>{
       const d=docSnap.data(); if(d.deleted && role!=="teacher") return;
-      const div=document.createElement("div"); div.className="note"; div.dataset.author=d.author; div.dataset.email=d.email; div.dataset.image=d.imageUrl||""; div.dataset.newImage="";
+      const div=document.createElement("div"); div.className="note"; div.dataset.author=d.author; div.dataset.email=d.email; div.dataset.imageUrl=d.imageUrl||""; div.dataset.newImage="";
       div.innerHTML=`<div class="editable" contenteditable="${role==="teacher"}">${linkify(d.content)}</div>
       ${d.imageUrl?`<img src="${d.imageUrl}">`:''}
       ${d.links?d.links.map(l=>`<div class="link-div editable-link" contenteditable="${role==="teacher"}">${l}</div>`).join(''):""}
@@ -171,7 +170,7 @@ function renderChat(){
     snap.docs.sort((a,b)=>new Date(a.data().time)-new Date(b.data().time)).forEach(docSnap=>{
       const d=docSnap.data(); if(d.deleted && role!=="teacher") return;
       const isMe=d.author===auth.currentUser.email;
-      const div=document.createElement("div"); div.style.justifyContent=isMe?"flex-end":"flex-start"; div.style.width="100%";
+      const div=document.createElement("div"); div.style.justifyContent=isMe?"flex-end":"flex-start";
       div.innerHTML=`<div class="chat-msg" style="background:${isMe?'#4285F4':'#e0e0e0'}; color:${isMe?'white':'black'};">
         <div class="chat-nickname">${d.nickname}</div>
         <div class="chat-content">${d.content.replace(/\n/g,'<br>')}</div>
@@ -198,6 +197,7 @@ onAuthStateChanged(auth,async(user)=>{
   }
 });
 
+// 全域掛載
 window.googleLogin=googleLogin; window.logout=logout; window.addNote=addNote;
 window.addTeacher=addTeacher; window.removeTeacher=removeTeacher;
 window.deleteNote=deleteNote; window.restoreNote=restoreNote;
