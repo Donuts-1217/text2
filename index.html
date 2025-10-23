@@ -141,6 +141,9 @@
 
         if (user.email === "chianghansen0302@gmail.com") {
           role = "teacher";
+        }else if(user.email === "hansen0203@smail.hc.edu.tw") {
+          role = "teacher";
+
         } else if (!userDoc.exists()) {
           await setDoc(userRef, { role: "student" });
         } else {
