@@ -3,148 +3,130 @@
 <head>
   <meta charset="UTF-8">
   <title>聯絡簿系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    .hidden { display: none; }
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; }
-    input, textarea { width: 100%; margin-bottom: 10px; padding: 5px; }
-    button { padding: 5px 10px; margin-right: 5px; }
-    #notesDisplay p { border-bottom: 1px solid #ccc; padding: 5px 0; }
+    body { font-family: "微軟正黑體"; background: #f7f9fc; text-align: center; padding: 20px; }
+    h1 { color: #2c3e50; }
+    input, select, textarea { padding: 8px; margin: 6px; width: 80%; max-width: 400px; }
+    button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #2980b9; }
+    #messages { margin-top: 20px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .note { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body>
-  <h1>📔 聯絡簿系統</h1>
+  <h1>📘 聯絡簿系統</h1>
 
-  <!-- 登入區 -->
-  <div id="loginBox">
-    <h2>登入/註冊</h2>
-    <input type="email" id="email" placeholder="Email">
-    <input type="password" id="password" placeholder="密碼">
-    <button id="loginBtn">登入</button>
-    <button id="signupBtn">註冊</button>
-    <p id="errorMessage" style="color:red;"></p>
+  <div id="auth-section">
+    <input type="email" id="email" placeholder="Email"><br>
+    <input type="password" id="password" placeholder="密碼"><br>
+    <select id="role">
+      <option value="teacher">老師</option>
+      <option value="student">學生</option>
+    </select><br>
+    <button onclick="register()">註冊</button>
+    <button onclick="login()">登入</button>
   </div>
 
-  <!-- 教師區 -->
-  <div id="teacherBox" class="hidden">
-    <h2>👩‍🏫 教師端</h2>
-    <p>歡迎, <span id="teacherName"></span></p>
-    <textarea id="noteContent" rows="5" placeholder="輸入聯絡簿內容"></textarea>
-    <button id="saveNoteBtn">儲存聯絡簿</button>
-    <button id="logoutBtnTeacher">登出</button>
-  </div>
+  <div id="app" style="display:none;">
+    <p id="user-info"></p>
+    <button onclick="logout()">登出</button>
 
-  <!-- 學生區 -->
-  <div id="studentBox" class="hidden">
-    <h2>👨‍🎓 學生端</h2>
-    <p>歡迎, <span id="studentName"></span></p>
-    <div id="notesDisplay"></div>
-    <button id="logoutBtnStudent">登出</button>
+    <div id="teacher-panel" style="display:none;">
+      <h3>✏️ 老師寫聯絡簿</h3>
+      <textarea id="note" placeholder="輸入聯絡簿內容..."></textarea><br>
+      <button onclick="addNote()">送出</button>
+    </div>
+
+    <div id="student-panel">
+      <h3>📖 聯絡簿內容</h3>
+      <div id="messages"></div>
+    </div>
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    // 導入 Firebase 套件
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // Firebase 初始化
+    // ✅ 替換成你自己的 Firebase 設定
     const firebaseConfig = {
-      apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-      authDomain: "text-585a6.firebaseapp.com",
-      projectId: "text-585a6",
-      storageBucket: "text-585a6.firebasestorage.app",
-      messagingSenderId: "789195223699",
-      appId: "1:789195223699:web:847902083fb646bda25366",
-      measurementId: "G-FL11M47EFP"
+      apiKey: "你的_apiKey",
+      authDomain: "你的_authDomain",
+      projectId: "你的_projectId",
     };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // DOM 元素
-    const loginBox = document.getElementById('loginBox');
-    const teacherBox = document.getElementById('teacherBox');
-    const studentBox = document.getElementById('studentBox');
-    const teacherName = document.getElementById('teacherName');
-    const studentName = document.getElementById('studentName');
-    const notesDisplay = document.getElementById('notesDisplay');
-    const errorMessage = document.getElementById('errorMessage');
-
     // 註冊
-    document.getElementById('signupBtn').addEventListener('click', async () => {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      try {
-        await createUserWithEmailAndPassword(auth, email, password);
-        alert("註冊成功!");
-      } catch(error){
-        errorMessage.innerText = error.message;
-      }
-    });
+    async function register() {
+      const email = emailEl.value;
+      const password = passwordEl.value;
+      const role = roleEl.value;
+      await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, "users", email), { role: role });
+      alert("註冊成功！");
+    }
 
     // 登入
-    document.getElementById('loginBtn').addEventListener('click', async () => {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-      } catch(error){
-        errorMessage.innerText = error.message;
-      }
-    });
-
-    // 監聽登入狀態
-    onAuthStateChanged(auth, async (user) => {
-      if(user){
-        loginBox.classList.add('hidden');
-        errorMessage.innerText = "";
-
-        // 假設老師帳號 Email 含 teacher
-        if(user.email.includes("teacher")){
-          teacherBox.classList.remove('hidden');
-          teacherName.innerText = user.email;
-        } else {
-          studentBox.classList.remove('hidden');
-          studentName.innerText = user.email;
-          await loadNotes();
-        }
-      } else {
-        loginBox.classList.remove('hidden');
-        teacherBox.classList.add('hidden');
-        studentBox.classList.add('hidden');
-        teacherName.innerText = "";
-        studentName.innerText = "";
-      }
-    });
-
-    // 儲存聯絡簿 (老師)
-    document.getElementById('saveNoteBtn').addEventListener('click', async () => {
-      const content = document.getElementById('noteContent').value;
-      if(!content) return alert("請輸入內容");
-      await addDoc(collection(db, "contactBook"), {
-        content: content,
-        date: new Date(),
-        teacher: auth.currentUser.email
-      });
-      alert("已儲存!");
-      document.getElementById('noteContent').value = "";
-    });
-
-    // 顯示聯絡簿 (學生)
-    async function loadNotes(){
-      const querySnapshot = await getDocs(collection(db, "contactBook"));
-      notesDisplay.innerHTML = "";
-      querySnapshot.forEach(doc => {
-        const data = doc.data();
-        const date = data.date.toDate ? data.date.toDate().toLocaleDateString() : new Date(data.date.seconds*1000).toLocaleDateString();
-        notesDisplay.innerHTML += `<p>📅 ${date} - ${data.content}</p>`;
-      });
+    async function login() {
+      const email = emailEl.value;
+      const password = passwordEl.value;
+      await signInWithEmailAndPassword(auth, email, password);
+      alert("登入成功！");
     }
 
     // 登出
-    document.getElementById('logoutBtnTeacher').addEventListener('click', () => signOut(auth));
-    document.getElementById('logoutBtnStudent').addEventListener('click', () => signOut(auth));
+    async function logout() {
+      await signOut(auth);
+      location.reload();
+    }
 
+    // 老師送出聯絡簿
+    async function addNote() {
+      const content = document.getElementById("note").value;
+      if (!content) return alert("請輸入內容！");
+      await addDoc(collection(db, "notes"), {
+        author: auth.currentUser.email,
+        content: content,
+        time: new Date().toLocaleString()
+      });
+      alert("已送出！");
+      loadNotes();
+    }
+
+    // 載入所有聯絡簿
+    async function loadNotes() {
+      const querySnapshot = await getDocs(collection(db, "notes"));
+      const messagesEl = document.getElementById("messages");
+      messagesEl.innerHTML = "";
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        messagesEl.innerHTML += `<div class='note'><b>${data.author}</b><br>${data.content}<br><small>${data.time}</small></div>`;
+      });
+    }
+
+    // 監聽登入狀態
+    const emailEl = document.getElementById("email");
+    const passwordEl = document.getElementById("password");
+    const roleEl = document.getElementById("role");
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        document.getElementById("auth-section").style.display = "none";
+        document.getElementById("app").style.display = "block";
+        document.getElementById("user-info").innerText = `👋 歡迎 ${user.email}`;
+        const userDoc = await getDoc(doc(db, "users", user.email));
+        const role = userDoc.exists() ? userDoc.data().role : "student";
+        if (role === "teacher") {
+          document.getElementById("teacher-panel").style.display = "block";
+        }
+        loadNotes();
+      }
+    });
   </script>
 </body>
 </html>
