@@ -13,6 +13,7 @@ textarea,input[type=url],input[type=email],input[type=text]{width:80%;max-width:
 textarea{height:100px; resize:none;}
 .note{background:#fff;padding:10px;border-radius:8px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.1); text-align:left; position:relative;}
 .note img{max-width:100%; margin-top:4px;border-radius:4px; cursor:pointer;}
+.note-actions{margin-top:4px;}
 small{color:gray; display:block; margin-top:4px;}
 a{color:#4285F4; word-break:break-all;}
 .link-div{margin-top:2px;}
@@ -29,34 +30,9 @@ a{color:#4285F4; word-break:break-all;}
 .chat-nickname{font-weight:bold; font-size:14px; margin-bottom:2px;}
 .chat-content{font-size:12px; white-space:pre-wrap;}
 .chat-time{font-size:10px; color:gray; text-align:right; margin-top:2px;}
-#chatInput {
-  width: 90%; 
-  max-width: 800px; 
-  min-width: 300px; 
-  height: 120px; 
-  padding: 10px; 
-  margin: 10px auto; 
-  display: block; 
-  border-radius: 8px; 
-  border: 1px solid #ccc; 
-  resize: vertical; 
-  font-size: 14px; 
-  box-sizing: border-box;
-}
-#sendBtn {
-  width: 90%;
-  max-width: 800px;
-  margin: 0 auto 10px auto;
-  display: block;
-  padding: 10px;
-  border-radius: 6px;
-  background: #4285F4;
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-}
-#sendBtn:hover { background:#3367D6; }
+#chatInput{width:90%; max-width:800px; min-width:300px; height:120px; padding:10px; margin:10px auto; display:block; border-radius:8px; border:1px solid #ccc; resize:vertical; font-size:14px; box-sizing:border-box;}
+#sendBtn{width:90%; max-width:800px; margin:0 auto 10px auto; display:block; padding:10px; border-radius:6px; background:#4285F4; color:white; border:none; cursor:pointer; font-size:16px;}
+#sendBtn:hover{background:#3367D6;}
 </style>
 </head>
 <body>
@@ -119,7 +95,7 @@ a{color:#4285F4; word-break:break-all;}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
 const firebaseConfig={apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",authDomain:"text-585a6.firebaseapp.com",projectId:"text-585a6",storageBucket:"text-585a6.appspot.com",messagingSenderId:"789195223699",appId:"1:789195223699:web:847902083fb646bda25366"};
@@ -131,164 +107,112 @@ const provider = new GoogleAuthProvider();
 
 let role="student", isAdmin=false, nickname=localStorage.getItem('nickname')||'我';
 
+// 登入/登出
 async function googleLogin(){ try{ await signInWithPopup(auth,provider); } catch(e){ alert("登入失敗:"+e.message);} }
 async function logout(){ await signOut(auth); location.reload(); }
 
+// 輸入事件
 function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
 function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
+
+// 預覽圖片
 function previewImage(event){ const preview=document.getElementById("preview"); const file=event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src=""; preview.style.display="none";} }
+
+// 切換聊天室
 function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=win.style.display==="none"?"flex":"none"; }
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
 
+// 使用者狀態
 onAuthStateChanged(auth,async(user)=>{
   if(user){
     document.getElementById("login-section").style.display="none"; 
     document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
+    
     const userRef=doc(db,"users",user.email); 
     const userDoc=await getDoc(userRef);
     if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} 
     else{ role=userDoc.data().role; }
+    
     if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
     if(role==="teacher") document.getElementById("recycle-section").style.display="block";
+    
     nickname=localStorage.getItem('nickname')||user.displayName||'我';
     document.getElementById("nicknameInput").value=nickname;
 
-    listenNotes(); 
-    listenRecycle(); 
+    listenNotes();
     listenChat();
   }
 });
 
-// 新增聯絡簿
+// 聯絡簿功能
 async function addNote(){
   const text=document.getElementById("note").value.trim();
-  const link=document.getElementById("linkInput").value.trim();
-  const imageFile=document.getElementById("imageInput").files[0];
-  if(!text && !link && !imageFile) return alert("請輸入內容");
-
+  if(!text) return;
   let imageUrl="";
-  if(imageFile){
-    const imgRef=ref(storage,"notes/"+Date.now()+"_"+imageFile.name);
-    await uploadBytes(imgRef,imageFile);
+  const file=document.getElementById("imageInput").files[0];
+  if(file){
+    const imgRef=ref(storage,"notes/"+Date.now()+"_"+file.name);
+    await uploadBytes(imgRef,file);
     imageUrl=await getDownloadURL(imgRef);
   }
-
-  await addDoc(collection(db,"notes"),{
-    text,
-    link,
-    image:imageUrl,
-    author:auth.currentUser.email,
-    timestamp:Date.now(),
-    deleted:false
-  });
+  const link=document.getElementById("linkInput").value.trim();
+  await addDoc(collection(db,"notes"),{text,link,image:imageUrl,deleted:false,timestamp:Date.now()});
   document.getElementById("note").value="";
   document.getElementById("linkInput").value="";
   document.getElementById("imageInput").value="";
   document.getElementById("preview").style.display="none";
 }
 
-// 監聽聯絡簿
 function listenNotes(){
   const q=query(collection(db,"notes"),orderBy("timestamp","desc"));
   onSnapshot(q,snapshot=>{
     const messages=document.getElementById("messages");
-    messages.innerHTML="";
-    snapshot.forEach(doc=>{
-      const data=doc.data();
-      if(data.deleted) return;
-      const div=document.createElement("div");
-      div.className="note";
-      div.innerHTML=`<div id="text-${doc.id}">${data.text}</div>
-        ${data.link?`<div class="link-div" id="link-${doc.id}"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
-        ${data.image?`<img id="img-${doc.id}" src="${data.image}">`:''}`;
-      if(role==="teacher"){
-        div.innerHTML+=`
-          <button onclick="deleteNote('${doc.id}')">刪除</button>
-          <button onclick="editNote('${doc.id}')">編輯</button>
-        `;
-      }
-      messages.appendChild(div);
-    });
-  });
-}
-
-// 回收站
-function listenRecycle(){
-  const q=query(collection(db,"notes"),orderBy("timestamp","desc"));
-  onSnapshot(q,snapshot=>{
     const recycle=document.getElementById("recycle");
+    messages.innerHTML="";
     recycle.innerHTML="";
     snapshot.forEach(doc=>{
       const data=doc.data();
-      if(!data.deleted) return;
-      const div=document.createElement("div");
-      div.className="note";
-      div.innerHTML=`<div>${data.text}</div>
-        ${data.link?`<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>`:""}
+      const id=doc.id;
+      const html=`
+      <div class="note">
         ${data.image?`<img src="${data.image}">`:''}
-        <button onclick="restoreNote('${doc.id}')">復原</button>`;
-      recycle.appendChild(div);
+        <div>${data.text}</div>
+        ${data.link?`<a href="${data.link}" target="_blank">${data.link}</a>`:''}
+        ${role==="teacher"?`
+        <div class="note-actions">
+          <button onclick="editNote('${id}')">編輯</button>
+          <button onclick="deleteNote('${id}')">${data.deleted?'復原':'刪除'}</button>
+        </div>`:''}
+      </div>`;
+      if(data.deleted) recycle.innerHTML+=html;
+      else messages.innerHTML+=html;
     });
   });
 }
 
-// 刪除/復原
-async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
-async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
-
-// 編輯聯絡簿
-function editNote(id){
-  const noteDiv=document.getElementById(`text-${id}`).parentElement;
-  const textDiv=document.getElementById(`text-${id}`);
-  const linkDiv=document.getElementById(`link-${id}`);
-  const imgEl=document.getElementById(`img-${id}`);
-
-  const textVal=textDiv.innerText;
-  const linkVal=linkDiv?linkDiv.innerText:"";
-  const imgSrc=imgEl?imgEl.src:"";
-
-  noteDiv.innerHTML=`
-    <textarea id="edit-text-${id}">${textVal}</textarea><br>
-    <input type="url" id="edit-link-${id}" placeholder="連結" value="${linkVal}"><br>
-    <input type="file" id="edit-image-${id}" accept="image/*"><br>
-    ${imgSrc?`<img id="edit-img-preview-${id}" src="${imgSrc}" style="max-width:100px;margin-top:4px;">`:""}
-    <button onclick="saveEdit('${id}')">儲存</button>
-    <button onclick="cancelEdit('${id}')">取消</button>
-  `;
+async function deleteNote(id){
+  const docRef=doc(db,"notes",id);
+  const note=await getDoc(docRef);
+  await setDoc(docRef,{deleted:!note.data().deleted},{merge:true});
 }
 
-async function saveEdit(id){
-  const newText=document.getElementById(`edit-text-${id}`).value;
-  const newLink=document.getElementById(`edit-link-${id}`).value;
-  const newFile=document.getElementById(`edit-image-${id}`).files[0];
-  let newImageUrl="";
-
-  if(newFile){
-    const imgRef=ref(storage,"notes/"+Date.now()+"_"+newFile.name);
-    await uploadBytes(imgRef,newFile);
-    newImageUrl=await getDownloadURL(imgRef);
+async function editNote(id){
+  const note=await getDoc(doc(db,"notes",id));
+  const data=note.data();
+  const newText=prompt("修改聯絡簿內容:",data.text);
+  if(newText!==null){
+    await setDoc(doc(db,"notes",id),{text:newText},{merge:true});
   }
-
-  const dataUpdate={text:newText, link:newLink};
-  if(newImageUrl) dataUpdate.image=newImageUrl;
-
-  await setDoc(doc(db,"notes",id),dataUpdate,{merge:true});
 }
 
-function cancelEdit(id){ listenNotes(); }
-
-// 聊天室
+// 聊天室功能
 async function sendChat(){
   const text=document.getElementById("chatInput").value.trim();
   if(!text) return;
-  await addDoc(collection(db,"chat"),{
-    text,
-    nickname,
-    timestamp:Date.now()
-  });
+  await addDoc(collection(db,"chat"),{text,nickname,timestamp:Date.now()});
   document.getElementById("chatInput").value="";
 }
 
@@ -310,8 +234,18 @@ function listenChat(){
 }
 
 // 教師帳號管理
-async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email) return; await setDoc(doc(db,"users",email),{role:"teacher"}); alert("新增成功"); }
-async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email) return; await setDoc(doc(db,"users",email),{role:"student"},{merge:true}); alert("刪除成功"); }
+async function addTeacher(){ 
+  const email=document.getElementById("newTeacherEmail").value.trim(); 
+  if(!email) return; 
+  await setDoc(doc(db,"users",email),{role:"teacher"}); 
+  alert("新增成功"); 
+}
+async function removeTeacher(){ 
+  const email=document.getElementById("deleteTeacherEmail").value.trim(); 
+  if(!email) return; 
+  await setDoc(doc(db,"users",email),{role:"student"},{merge:true}); 
+  alert("刪除成功"); 
+}
 
 </script>
 </body>
