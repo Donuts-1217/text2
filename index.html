@@ -19,7 +19,7 @@
   <h1>📘 聯絡簿系統</h1>
 
   <div id="login-section">
-    <button onclick="googleLogin()">使用 Google 登入</button>
+    <button onclick="googleLogin(); console.log('登入按鈕被點擊');">使用 Google 登入</button>
   </div>
 
   <div id="app" style="display:none;">
@@ -40,31 +40,40 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { 
+      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { 
+      getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // ✅ 換成你的 Firebase 設定
-  const firebaseConfig = {
-  apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-  authDomain: "text-585a6.firebaseapp.com",
-  projectId: "text-585a6",
-  storageBucket: "text-585a6.firebasestorage.app",
-  messagingSenderId: "789195223699",
-  appId: "1:789195223699:web:847902083fb646bda25366",
-  measurementId: "G-FL11M47EFP"
-};
+    // ✅ 你的 Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
+      authDomain: "text-585a6.firebaseapp.com",
+      projectId: "text-585a6",
+      storageBucket: "text-585a6.firebasestorage.app",
+      messagingSenderId: "789195223699",
+      appId: "1:789195223699:web:847902083fb646bda25366",
+      measurementId: "G-FL11M47EFP"
+    };
+
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    console.log("Firebase script 已載入");
+
     // 🔹 Google 登入
     async function googleLogin() {
+      console.log("googleLogin() 被呼叫");
       try {
         await signInWithPopup(auth, provider);
+        console.log("登入成功");
       } catch (e) {
-        console.error(e);
-        alert("登入失敗！");
+        console.error("登入錯誤：", e);
+        alert("登入失敗：" + e.message);
       }
     }
 
@@ -107,6 +116,7 @@
     // 🔹 登入監聽
     onAuthStateChanged(auth, async (user) => {
       if (user) {
+        console.log("使用者登入：", user.email);
         document.getElementById("login-section").style.display = "none";
         document.getElementById("app").style.display = "block";
         document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
@@ -127,8 +137,15 @@
         }
 
         loadNotes();
+      } else {
+        console.log("尚未登入");
       }
     });
+
+    // ✅ 掛到全域（讓 HTML onclick 找得到）
+    window.googleLogin = googleLogin;
+    window.logout = logout;
+    window.addNote = addNote;
   </script>
 </body>
 </html>
