@@ -47,7 +47,7 @@
       getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // ✅ 你的 Firebase 設定
+    // ✅ Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
       authDomain: "text-585a6.firebaseapp.com",
@@ -121,17 +121,22 @@
         document.getElementById("app").style.display = "block";
         document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
 
-        // 若無角色資料則預設為學生
         const userRef = doc(db, "users", user.email);
         const userDoc = await getDoc(userRef);
-        let role = "student";
-        if (!userDoc.exists()) {
+
+        let role = "student"; // 預設學生
+
+        // 🔹 指定特定帳號為老師
+        if (user.email === "chianghansen0302@gmail.com") {
+          role = "teacher";
+        } else if (!userDoc.exists()) {
+          // Firestore 無資料則建立預設學生
           await setDoc(userRef, { role: "student" });
         } else {
           role = userDoc.data().role;
         }
 
-        // 老師可寫
+        // 顯示老師面板
         if (role === "teacher") {
           document.getElementById("teacher-panel").style.display = "block";
         }
