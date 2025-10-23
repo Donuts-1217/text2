@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（最終版+聊天室）</title>
+<title>聯絡簿系統（最終版+聊天室+回收站）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family:"微軟正黑體"; background:#f2f5fa; text-align:center; padding:20px; }
@@ -84,7 +84,7 @@ a{color:#4285F4; word-break:break-all;}
   <div style="padding:10px; background:#4285F4; color:white; display:flex; justify-content:space-between; align-items:center;">
     <span>學生聊天室</span>
     <input id="nicknameInput" type="text" placeholder="暱稱" style="width:150px;" onblur="saveNickname()">
-    <button style="background:#f44336;padding:4px 8px;" onclick="toggleChat()">X</button>
+    <button style="background:#f44336;padding:4px 8px;" onclick="closeChat()">返回聯絡簿</button>
   </div>
   <div id="chatBox"></div>
   <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" onkeydown="handleChatEnter(event)"></textarea>
@@ -94,10 +94,17 @@ a{color:#4285F4; word-break:break-all;}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
-const firebaseConfig={apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",authDomain:"text-585a6.firebaseapp.com",projectId:"text-585a6",storageBucket:"text-585a6.appspot.com",messagingSenderId:"789195223699",appId:"1:789195223699:web:847902083fb646bda25366"};
+const firebaseConfig={
+  apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
+  authDomain:"text-585a6.firebaseapp.com",
+  projectId:"text-585a6",
+  storageBucket:"text-585a6.appspot.com",
+  messagingSenderId:"789195223699",
+  appId:"1:789195223699:web:847902083fb646bda25366"
+};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -106,34 +113,178 @@ const provider = new GoogleAuthProvider();
 
 let role="student", isAdmin=false, nickname=localStorage.getItem('nickname')||'我';
 
+// 登入登出
 async function googleLogin(){ try{ await signInWithPopup(auth,provider); } catch(e){ alert("登入失敗:"+e.message);} }
 async function logout(){ await signOut(auth); location.reload(); }
 
+// 輸入 Enter 送出
 function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
 function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
 
-function previewImage(event){ const preview=document.getElementById("preview"); const file=event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src=""; preview.style.display="none";} }
+// 預覽圖片
+function previewImage(event){ 
+  const preview=document.getElementById("preview"); 
+  const file=event.target.files[0]; 
+  if(file){ 
+    const reader=new FileReader(); 
+    reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; 
+    reader.readAsDataURL(file);
+  } else{preview.src=""; preview.style.display="none";} 
+}
 
+// 聊天室開關與暱稱儲存
 function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=win.style.display==="none"?"flex":"none"; }
+function closeChat(){ document.getElementById("chatWindow").style.display="none"; }
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
 
+// 登入後判斷角色
 onAuthStateChanged(auth,async(user)=>{
   if(user){
-    document.getElementById("login-section").style.display="none"; document.getElementById("app").style.display="block";
+    document.getElementById("login-section").style.display="none"; 
+    document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-    const userRef=doc(db,"users",user.email); const userDoc=await getDoc(userRef);
-    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} else{ role=userDoc.data().role; }
+
+    const userRef=doc(db,"users",user.email); 
+    const userDoc=await getDoc(userRef);
+    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} 
+    else{ role=userDoc.data().role; }
+
     if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
     if(role==="teacher") document.getElementById("recycle-section").style.display="block";
+
     nickname=localStorage.getItem('nickname')||user.displayName||'我';
     document.getElementById("nicknameInput").value=nickname;
+
+    loadNotes();
+    listenChat();
   }
 });
 
-// 這裡你可以加上 addNote()、sendChat()、教師管理等功能的完整 JS
-// 之前我們討論過的回收站、編輯、刪除、復原、聊天室訊息發送功能都可以接在這裡
+// 新增聯絡簿
+async function addNote(){
+  const noteText = document.getElementById("note").value.trim();
+  const link = document.getElementById("linkInput").value.trim();
+  const imgFile = document.getElementById("imageInput").files[0];
+
+  if(!noteText && !imgFile && !link) return alert("請輸入內容或上傳圖片/連結");
+
+  let imgUrl = "";
+  if(imgFile){
+    const storageRef = ref(storage, `notes/${Date.now()}_${imgFile.name}`);
+    await uploadBytes(storageRef, imgFile);
+    imgUrl = await getDownloadURL(storageRef);
+  }
+
+  await addDoc(collection(db,"notes"),{
+    text: noteText,
+    link: link || "",
+    img: imgUrl,
+    author: auth.currentUser.email,
+    timestamp: Date.now(),
+    deleted: false
+  });
+
+  document.getElementById("note").value="";
+  document.getElementById("linkInput").value="";
+  document.getElementById("imageInput").value="";
+  document.getElementById("preview").style.display="none";
+}
+
+// 刪除或復原單篇聯絡簿
+async function toggleDeleteNote(docId, currentStatus){
+  const noteRef = doc(db,"notes",docId);
+  await setDoc(noteRef, { deleted: !currentStatus }, { merge:true });
+}
+
+// 載入聯絡簿並顯示回收站
+function loadNotes(){
+  const notesCol = collection(db,"notes");
+  const q = query(notesCol, orderBy("timestamp","desc"));
+  onSnapshot(q,(snapshot)=>{
+    const messagesDiv=document.getElementById("messages");
+    const recycleDiv=document.getElementById("recycle");
+    messagesDiv.innerHTML=""; recycleDiv.innerHTML="";
+    snapshot.forEach(doc=>{
+      const data = doc.data();
+      const div = document.createElement("div");
+      div.className = "note";
+      div.innerHTML = `
+        ${data.text ? `<p>${data.text}</p>` : ""}
+        ${data.link ? `<div class="link-div"><a href="${data.link}" target="_blank">${data.link}</a></div>` : ""}
+        ${data.img ? `<img src="${data.img}">` : ""}
+        <small>作者: ${data.author}</small>
+      `;
+
+      // 老師看到刪除/復原按鈕
+      if(role==="teacher"){
+        const btn = document.createElement("button");
+        btn.style.marginTop = "4px";
+        btn.innerText = data.deleted ? "復原" : "刪除";
+        btn.onclick = ()=> toggleDeleteNote(doc.id, data.deleted);
+        div.appendChild(btn);
+      }
+
+      if(data.deleted){
+        if(role==="teacher") recycleDiv.appendChild(div);
+      } else {
+        messagesDiv.appendChild(div);
+      }
+    });
+  });
+}
+
+// 教師帳號管理
+async function addTeacher(){
+  const email = document.getElementById("newTeacherEmail").value.trim();
+  if(!email) return;
+  await setDoc(doc(db,"users",email), { role:"teacher" });
+  alert("新增教師成功！");
+}
+async function removeTeacher(){
+  const email = document.getElementById("deleteTeacherEmail").value.trim();
+  if(!email) return;
+  await setDoc(doc(db,"users",email), { role:"student" });
+  alert("刪除教師成功！");
+}
+
+// 聊天室即時監聽
+function listenChat(){
+  const chatCol = collection(db,"chat");
+  const q = query(chatCol, orderBy("timestamp","asc"));
+  onSnapshot(q,(snapshot)=>{
+    const chatBox = document.getElementById("chatBox");
+    chatBox.innerHTML="";
+    snapshot.forEach(doc=>{
+      const data = doc.data();
+      const div = document.createElement("div");
+      div.className = (data.author===auth.currentUser.email) ? "chat-container me" : "chat-container other";
+      div.innerHTML = `
+        <div class="chat-msg">
+          <span class="chat-nickname">${data.nickname}</span>
+          <span class="chat-content">${data.message}</span>
+          <span class="chat-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
+        </div>
+      `;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+  });
+}
+
+// 發送聊天訊息
+async function sendChat(){
+  const msg = document.getElementById("chatInput").value.trim();
+  if(!msg) return;
+  await addDoc(collection(db,"chat"),{
+    nickname,
+    message: msg,
+    timestamp: Date.now(),
+    author: auth.currentUser.email
+  });
+  document.getElementById("chatInput").value="";
+}
 </script>
 </body>
 </html>
