@@ -10,9 +10,10 @@
     button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
     button:hover { background: #3367D6; }
     textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
-    #messages { margin-top: 25px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
+    #messages, #history { margin-top: 25px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
     .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
     small { color: gray; }
+    hr { margin: 25px 0; border: 0.5px solid #ccc; }
   </style>
 </head>
 <body>
@@ -33,8 +34,13 @@
     </div>
 
     <div id="student-panel">
-      <h3>📖 聯絡簿內容</h3>
+      <h3>📖 最新聯絡簿</h3>
       <div id="messages"></div>
+
+      <hr>
+
+      <h3>🕒 歷史紀錄</h3>
+      <div id="history"></div>
     </div>
   </div>
 
@@ -44,10 +50,9 @@
       getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { 
-      getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc 
+      getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc, query, orderBy 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // ✅ Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
       authDomain: "text-585a6.firebaseapp.com",
@@ -65,7 +70,6 @@
 
     console.log("Firebase script 已載入");
 
-    // 🔹 Google 登入
     async function googleLogin() {
       console.log("googleLogin() 被呼叫");
       try {
@@ -77,13 +81,11 @@
       }
     }
 
-    // 🔹 登出
     async function logout() {
       await signOut(auth);
       location.reload();
     }
 
-    // 🔹 老師寫聯絡簿
     async function addNote() {
       const content = document.getElementById("note").value.trim();
       if (!content) return alert("請輸入內容！");
@@ -97,23 +99,34 @@
       loadNotes();
     }
 
-    // 🔹 載入聯絡簿
+    // 🔹 載入聯絡簿與歷史紀錄
     async function loadNotes() {
-      const querySnapshot = await getDocs(collection(db, "notes"));
+      const q = query(collection(db, "notes"), orderBy("time", "desc"));
+      const querySnapshot = await getDocs(q);
+
       const messagesEl = document.getElementById("messages");
+      const historyEl = document.getElementById("history");
       messagesEl.innerHTML = "";
+      historyEl.innerHTML = "";
+
+      let first = true;
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        messagesEl.innerHTML += `
+        const html = `
           <div class='note'>
             <b>${data.author}</b>（${data.email}）<br>
             ${data.content}<br>
             <small>${data.time}</small>
           </div>`;
+        if (first) {
+          messagesEl.innerHTML = html; // 最新一筆顯示在「最新聯絡簿」
+          first = false;
+        } else {
+          historyEl.innerHTML += html; // 其餘顯示在歷史紀錄
+        }
       });
     }
 
-    // 🔹 登入監聽
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         console.log("使用者登入：", user.email);
@@ -124,19 +137,16 @@
         const userRef = doc(db, "users", user.email);
         const userDoc = await getDoc(userRef);
 
-        let role = "student"; // 預設學生
+        let role = "student";
 
-        // 🔹 指定特定帳號為老師
         if (user.email === "chianghansen0302@gmail.com") {
           role = "teacher";
         } else if (!userDoc.exists()) {
-          // Firestore 無資料則建立預設學生
           await setDoc(userRef, { role: "student" });
         } else {
           role = userDoc.data().role;
         }
 
-        // 顯示老師面板
         if (role === "teacher") {
           document.getElementById("teacher-panel").style.display = "block";
         }
@@ -147,7 +157,6 @@
       }
     });
 
-    // ✅ 掛到全域（讓 HTML onclick 找得到）
     window.googleLogin = googleLogin;
     window.logout = logout;
     window.addNote = addNote;
