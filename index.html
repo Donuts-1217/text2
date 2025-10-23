@@ -99,7 +99,6 @@
       loadNotes();
     }
 
-    // 🔹 載入聯絡簿與歷史紀錄
     async function loadNotes() {
       const q = query(collection(db, "notes"), orderBy("time", "desc"));
       const querySnapshot = await getDocs(q);
@@ -119,10 +118,10 @@
             <small>${data.time}</small>
           </div>`;
         if (first) {
-          messagesEl.innerHTML = html; // 最新一筆顯示在「最新聯絡簿」
+          messagesEl.innerHTML = html;
           first = false;
         } else {
-          historyEl.innerHTML += html; // 其餘顯示在歷史紀錄
+          historyEl.innerHTML += html;
         }
       });
     }
@@ -139,12 +138,14 @@
 
         let role = "student";
 
-        if (user.email === "chianghansen0302@gmail.com") {
-          role = "teacher";
+        // 🔹 特定教師帳號清單
+        const teacherEmails = [
+          "chianghansen0302@gmail.com",
+          "1130404@gm.khjh.hc.edu.tw"
+        ];
 
-        }else if(user.email === "1130404@gm.khjh.hc.edu.tw") {
+        if (teacherEmails.includes(user.email)) {
           role = "teacher";
-
         } else if (!userDoc.exists()) {
           await setDoc(userRef, { role: "student" });
         } else {
