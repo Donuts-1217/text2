@@ -9,14 +9,14 @@ body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; 
 h1 { color: #2c3e50; }
 button { padding:6px 14px; background:#4285F4; color:white; border:none; border-radius:6px; cursor:pointer; margin:2px; font-size:13px; }
 button:hover { background:#3367D6; }
-textarea, input[type=url], input[type=email] { width:80%; max-width:420px; border-radius:6px; border:1px solid #ccc; padding:6px; margin:4px 0; }
+textarea, input[type=url], input[type=email], input[type=text] { width:80%; max-width:420px; border-radius:6px; border:1px solid #ccc; padding:6px; margin:4px 0; }
 textarea { height:100px; resize:none; }
 .note { background:#fff; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.1); text-align:left; position:relative; }
 .note img { max-width:100%; margin-top:4px; border-radius:4px; cursor:pointer; }
 small { color:gray; display:block; margin-top:4px; }
 a { color:#4285F4; word-break: break-all; }
 .link-div { margin-top:2px; }
-#chatBox { height:200px; overflow-y:auto; max-width:500px; margin:auto; border:1px solid #ccc; padding:8px; background:#fff; text-align:left;}
+#chatBox { flex:1; overflow-y:auto; padding:8px;}
 </style>
 </head>
 <body>
@@ -57,14 +57,21 @@ a { color:#4285F4; word-break: break-all; }
 
     <h3>🗑 回收站（老師可見）</h3>
     <div id="recycle"></div>
-
-    <hr>
-
-    <h3>💬 學生聊天室</h3>
-    <div id="chatBox"></div>
-    <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" onkeydown="handleChatEnter(event)"></textarea>
-    <button onclick="sendChat()">送出</button>
   </div>
+</div>
+
+<!-- 浮動聊天室按鈕 -->
+<button id="chatBtn" style="position:fixed;bottom:20px;right:20px;border-radius:50%;width:50px;height:50px;font-size:24px;z-index:999;">💬</button>
+
+<!-- 聊天室視窗 -->
+<div id="chatWindow" style="display:none;position:fixed;bottom:80px;right:20px;width:320px;height:400px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.2);z-index:999;display:flex;flex-direction:column;">
+  <div style="padding:6px;background:#4285F4;color:white;border-top-left-radius:8px;border-top-right-radius:8px;">
+    學生聊天室
+    <input id="nicknameInput" type="text" placeholder="暱稱" style="width:120px;float:right;margin-right:4px;" onblur="saveNickname()">
+  </div>
+  <div id="chatBox"></div>
+  <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" style="resize:none;height:50px;padding:4px;" onkeydown="handleChatEnter(event)"></textarea>
+  <button onclick="sendChat()">送出</button>
 </div>
 
 <script type="module">
@@ -91,6 +98,7 @@ const provider = new GoogleAuthProvider();
 
 let role="student";
 let isAdmin=false;
+let nickname = localStorage.getItem('nickname') || '我';
 
 // 登入/登出
 async function googleLogin(){ try{ await signInWithPopup(auth,provider);} catch(e){ alert("登入失敗:"+e.message);} }
@@ -106,7 +114,7 @@ function previewImage(event){ const preview=document.getElementById("preview"); 
 // 連結文字轉超連結
 function linkify(text){ const urlPattern=/(https?:\/\/[^\s]+)/g; return text.replace(urlPattern,"<a href='$1' target='_blank'>$1</a>"); }
 
-// 新增或更新筆記
+// 新增/更新筆記
 async function addNote(update=false,docId=null,div=null){
   const content=document.getElementById("note").value.trim();
   const link=document.getElementById("linkInput").value.trim()||null;
@@ -127,7 +135,7 @@ async function addNote(update=false,docId=null,div=null){
   maintainLatestFive();
 }
 
-// 保留最新5筆筆記，超過自動回收
+// 保留最新5筆筆記
 async function maintainLatestFive(){
   const notesSnapshot=await getDocs(collection(db,"notes"));
   const docs=notesSnapshot.docs.filter(d=>!d.data().deleted).sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
@@ -138,28 +146,66 @@ async function maintainLatestFive(){
   }
 }
 
-// 教師帳號管理
-async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email) return alert("請輸入Email"); await setDoc(doc(db,"users",email),{role:"teacher"}); alert(email+" 已設為教師");}
-async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email) return alert("請輸入Email"); const userRef=doc(db,"users",email); await setDoc(userRef,{role:"student"}); alert(email+" 已移除教師權限");}
-
-// 刪除/復原筆記
-async function deleteNote(docId){ if(confirm("確定刪除？")){ await setDoc(doc(db,"notes",docId),{... (await getDoc(doc(db,"notes",docId))).data(),deleted:true}); } }
-async function restoreNote(docId){ await setDoc(doc(db,"notes",docId),{... (await getDoc(doc(db,"notes",docId))).data(),deleted:false}); maintainLatestFive(); }
-
-// 更換筆記圖片
-async function changeImage(docId,div){
-  const fileInput=document.createElement("input"); fileInput.type="file"; fileInput.accept="image/*";
-  fileInput.onchange=async (e)=>{ const file=e.target.files[0]; if(!file) return; const storageRef=ref(storage,`notes/${Date.now()}_${file.name}`); await uploadBytes(storageRef,file); const imageUrl=await getDownloadURL(storageRef); div.dataset.newImage=imageUrl; div.querySelector("img").src=imageUrl; await addNote(true,docId,div); }; fileInput.click();
+// 監聽筆記
+function renderNotes(){
+  const notesQuery=query(collection(db,"notes"));
+  onSnapshot(notesQuery,snapshot=>{
+    const messagesEl=document.getElementById("messages");
+    const recycleEl=document.getElementById("recycle");
+    messagesEl.innerHTML=""; recycleEl.innerHTML="";
+    const docs=snapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
+    docs.forEach(docSnap=>{
+      const d=docSnap.data();
+      if(d.deleted && role!=="teacher") return;
+      const div=document.createElement("div"); div.className="note"; div.dataset.author=d.author; div.dataset.email=d.email; div.dataset.image=d.imageUrl||""; div.dataset.newImage="";
+      div.innerHTML=`<div class="editable" contenteditable="${role==="teacher"}">${linkify(d.content)}</div>
+        ${d.imageUrl?`<img src="${d.imageUrl}">`:""}
+        ${d.links?d.links.map(l=>`<div class="link-div editable-link" contenteditable="${role==="teacher"}">${l}</div>`).join(""):""}
+        <small>${d.time}</small>
+        ${role==="teacher"?`<button onclick='deleteNote("${docSnap.id}")'>刪除</button>`:""}
+        ${role==="teacher" && d.deleted?`<button onclick='restoreNote("${docSnap.id}")'>復原</button>`:""}
+        ${role==="teacher"?`<button onclick='addNote(true,"${docSnap.id}",this.parentElement)'>更新</button>`:""}`;
+      if(d.deleted) recycleEl.appendChild(div); else messagesEl.appendChild(div);
+    });
+  });
 }
+
+// 刪除/復原
+async function deleteNote(id){ const docRef=doc(db,"notes",id); const data=(await getDoc(docRef)).data(); await setDoc(docRef,{...data,deleted:true}); }
+async function restoreNote(id){ const docRef=doc(db,"notes",id); const data=(await getDoc(docRef)).data(); await setDoc(docRef,{...data,deleted:false}); }
+
+// 教師帳號管理
+async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email) return alert("請輸入"); await setDoc(doc(db,"users",email),{role:"teacher"}); alert("新增完成"); }
+async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email) return alert("請輸入"); await setDoc(doc(db,"users",email),{role:"student"}); alert("刪除完成"); }
+
+// 暱稱設定
+function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem("nickname",nickname); }}
 
 // 聊天室
-async function sendChat(){
-  const text=document.getElementById("chatInput").value.trim();
-  if(!text) return;
-  await addDoc(collection(db,"chat"),{author:auth.currentUser.displayName,email:auth.currentUser.email,content:text,time:new Date().toLocaleString(),deleted:false});
-  document.getElementById("chatInput").value="";
+document.getElementById("chatBtn").addEventListener("click",()=>{ const win=document.getElementById("chatWindow"); win.style.display=(win.style.display==="none")?"flex":"none"; });
+async function sendChat(){ const text=document.getElementById("chatInput").value.trim(); if(!text) return; await addDoc(collection(db,"chat"),{author:auth.currentUser.email,nickname:nickname,content:text,time:new Date().toLocaleString(),deleted:false}); document.getElementById("chatInput").value=""; }
+async function deleteChat(id){ const docRef=doc(db,"chat",id); const data=(await getDoc(docRef)).data(); await setDoc(docRef,{...data,deleted:true}); }
+
+// 監聽聊天室
+function renderChat(){
+  const chatQuery=query(collection(db,"chat"));
+  onSnapshot(chatQuery,snapshot=>{
+    const chatBox=document.getElementById("chatBox");
+    chatBox.innerHTML="";
+    snapshot.docs.sort((a,b)=>new Date(a.data().time)-new Date(b.data().time)).forEach(doc=>{
+      const d=doc.data(); if(d.deleted && role!=="teacher") return;
+      const isMe=d.author===auth.currentUser.email;
+      const div=document.createElement("div"); div.style.display="flex"; div.style.justifyContent=isMe?"flex-end":"flex-start"; div.style.marginBottom="4px";
+      div.innerHTML=`<div style="background:${isMe?'#4285F4':'#e0e0e0'};color:${isMe?'white':'black'};padding:6px 10px;border-radius:10px;max-width:70%;word-break:break-word;">
+        <b>${d.nickname}</b><br>${d.content.replace(/\n/g,"<br>")}
+        <div style="font-size:10px;color:${isMe?'#cce0ff':'gray'};text-align:right;">${d.time}</div>
+        ${role==="teacher"?`<button onclick='deleteChat("${doc.id}")' style="font-size:10px;margin-top:2px;">刪除</button>`:""}
+      </div>`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop=chatBox.scrollHeight;
+    });
+  });
 }
-async function deleteChat(docId){ if(confirm("確定刪除？")){ const docRef=doc(db,"chat",docId); await setDoc(docRef,{... (await getDoc(docRef)).data(),deleted:true}); }}
 
 // 登入監聽
 onAuthStateChanged(auth,async(user)=>{
@@ -167,56 +213,22 @@ onAuthStateChanged(auth,async(user)=>{
     document.getElementById("login-section").style.display="none";
     document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-    const userRef=doc(db,"users",user.email);
-    const userDoc=await getDoc(userRef);
-    role="student"; isAdmin=false;
-    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} else{ role=userDoc.data().role; if(user.email==="chianghansen0302@gmail.com") isAdmin=true; }
+    const userRef=doc(db,"users",user.email); const userDoc=await getDoc(userRef);
+    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} else{ role=userDoc.data().role; }
+    if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
+    nickname = localStorage.getItem('nickname') || user.displayName || '我'; document.getElementById("nicknameInput").value = nickname;
+    renderNotes(); renderChat(); maintainLatestFive();
   }
 });
 
-// 顯示筆記
-const notesQuery=query(collection(db,"notes"));
-onSnapshot(notesQuery,snapshot=>{
-  const messagesEl=document.getElementById("messages");
-  const recycleEl=document.getElementById("recycle");
-  messagesEl.innerHTML=""; recycleEl.innerHTML="";
-  const docs=snapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
-  docs.forEach(docSnap=>{
-    const d=docSnap.data(); if(d.deleted && role!=="teacher") return;
-    const div=document.createElement("div"); div.className="note"; div.dataset.author=d.author; div.dataset.email=d.email; div.dataset.image=d.imageUrl||""; div.dataset.newImage="";
-    div.innerHTML=`<div class="editable" contenteditable="${role==="teacher"?true:false}">${linkify(d.content)}</div>
-      ${d.imageUrl?`<img src="${d.imageUrl}" onclick='changeImage("${docSnap.id}",this.parentElement)'>`:""}
-      ${d.links?d.links.map(l=>`<div class="link-div editable-link" contenteditable="${role==="teacher"?true:false}">${l}</div>`).join(""):""}
-      <small>${d.time}</small>
-      ${role==="teacher"?`<button onclick='deleteNote("${docSnap.id}")'>刪除</button>`:""}
-      ${role==="teacher" && d.deleted?`<button onclick='restoreNote("${docSnap.id}")'>復原</button>`:""}`;
-    if(d.deleted) recycleEl.appendChild(div); else messagesEl.appendChild(div);
-  });
-});
-
-// 聊天室
-const chatQuery=query(collection(db,"chat"));
-onSnapshot(chatQuery,snapshot=>{
-  const chatBox=document.getElementById("chatBox");
-  chatBox.innerHTML="";
-  snapshot.docs.sort((a,b)=>new Date(a.data().time)-new Date(b.data().time)).forEach(doc=>{
-    const d=doc.data();
-    if(d.deleted && role!=="teacher") return;
-    const div=document.createElement("div");
-    div.innerHTML=`<b>${d.author}</b>: ${d.content.replace(/\n/g,"<br>")} <small>${d.time}</small>
-      ${role==="teacher"?`<button onclick='deleteChat("${doc.id}")'>刪除</button>`:""}`;
-    chatBox.appendChild(div);
-    chatBox.scrollTop=chatBox.scrollHeight;
-  });
-});
-
-// 全域
+// 掛到全域
 window.googleLogin=googleLogin; window.logout=logout; window.addNote=addNote;
 window.addTeacher=addTeacher; window.removeTeacher=removeTeacher;
-window.deleteNote=deleteNote; window.restoreNote=restoreNote; window.sendChat=sendChat;
-window.deleteChat=deleteChat; window.handleEnter=handleEnter; window.handleChatEnter=handleChatEnter;
+window.deleteNote=deleteNote; window.restoreNote=restoreNote;
+window.sendChat=sendChat; window.deleteChat=deleteChat;
+window.handleEnter=handleEnter; window.handleChatEnter=handleChatEnter;
 </script>
 </body>
 </html>
