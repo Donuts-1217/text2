@@ -1,139 +1,151 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<title>聯絡簿系統（最終版+聊天室）</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body { font-family:"微軟正黑體"; background:#f2f5fa; text-align:center; padding:20px; }
-h1 { color:#2c3e50; }
-button { padding:6px 14px; background:#4285F4; color:white; border:none; border-radius:6px; cursor:pointer; margin:2px; font-size:13px; }
-button:hover{background:#3367D6;}
-textarea,input[type=url],input[type=email],input[type=text]{width:80%;max-width:420px;border-radius:6px;border:1px solid #ccc;padding:6px;margin:4px 0;}
-textarea{height:100px; resize:none;}
-.note{background:#fff;padding:10px;border-radius:8px;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.1); text-align:left; position:relative;}
-.note img{max-width:100%; margin-top:4px;border-radius:4px; cursor:pointer;}
-small{color:gray; display:block; margin-top:4px;}
-a{color:#4285F4; word-break:break-all;}
-.link-div{margin-top:2px;}
-
-/* 聊天室樣式 */
-#chatWindow{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#f2f5fa;z-index:1000;flex-direction:column;}
-#chatBox{flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column;}
-.chat-container{display:flex; margin-bottom:6px;}
-.chat-container.me{justify-content:flex-end;}
-.chat-container.other{justify-content:flex-start;}
-.chat-msg{max-width:70%; word-break:break-word; padding:8px 12px; border-radius:12px; display:flex; flex-direction:column;}
-.chat-container.me .chat-msg{background:#4285F4;color:white;}
-.chat-container.other .chat-msg{background:#e0e0e0;color:black;}
-.chat-nickname{font-weight:bold; font-size:14px; margin-bottom:2px;}
-.chat-content{font-size:12px; white-space:pre-wrap;}
-.chat-time{font-size:10px; color:gray; text-align:right; margin-top:2px;}
-#chatInput{width:90%; max-width:800px; min-width:200px; height:60px; padding:8px; margin:10px auto; display:block; border-radius:8px; border:1px solid #ccc; resize:none; font-size:14px; box-sizing:border-box;}
-#sendBtn{width:90%; max-width:800px; margin:0 auto 10px auto; display:block; padding:8px; border-radius:6px; background:#4285F4; color:white; border:none; cursor:pointer; font-size:14px;}
-#sendBtn:hover{background:#3367D6;}
-</style>
+  <meta charset="UTF-8">
+  <title>聯絡簿系統（Google 登入版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
+    h1 { color: #2c3e50; }
+    button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #3367D6; }
+    textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
+    #messages { margin-top: 25px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    small { color: gray; }
+  </style>
 </head>
 <body>
-<h1>📘 聯絡簿系統</h1>
+  <h1>📘 聯絡簿系統</h1>
 
-<div id="login-section">
-  <button onclick="googleLogin();">使用 Google 登入</button>
-</div>
-
-<div id="app" style="display:none;">
-  <p id="user-info"></p>
-  <button onclick="logout()">登出</button>
-
-  <!-- 老師面板 -->
-  <div id="teacher-panel" style="display:none;">
-    <h3>✏️ 老師寫聯絡簿</h3>
-    <textarea id="note" placeholder="輸入聯絡簿內容..." onkeydown="handleEnter(event)"></textarea><br>
-    <input type="url" id="linkInput" placeholder="新增超連結 (https://...)"><br>
-    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
-    <img id="preview" style="display:none"><br>
-    <button onclick="addNote()">送出</button>
+  <div id="login-section">
+    <button onclick="googleLogin(); console.log('登入按鈕被點擊');">使用 Google 登入</button>
   </div>
 
-  <!-- 最高權限面板 -->
-  <div id="admin-panel" style="display:none;">
-    <h3>🛠 教師帳號管理（最高權限）</h3>
-    <input type="email" id="newTeacherEmail" placeholder="輸入教師Email">
-    <button onclick="addTeacher()">新增教師</button><br>
-    <input type="email" id="deleteTeacherEmail" placeholder="輸入教師Email刪除">
-    <button onclick="removeTeacher()">刪除教師</button>
-  </div>
+  <div id="app" style="display:none;">
+    <p id="user-info"></p>
+    <button onclick="logout()">登出</button>
 
-  <div id="student-panel">
-    <h3>📖 最新聯絡簿</h3>
-    <div id="messages"></div>
+    <div id="teacher-panel" style="display:none;">
+      <h3>✏️ 老師寫聯絡簿</h3>
+      <textarea id="note" placeholder="輸入聯絡簿內容..."></textarea><br>
+      <button onclick="addNote()">送出</button>
+    </div>
 
-    <!-- 只給老師看的回收站 -->
-    <div id="recycle-section" style="display:none;">
-      <h3>🗑 回收站（老師可見）</h3>
-      <div id="recycle"></div>
+    <div id="student-panel">
+      <h3>📖 聯絡簿內容</h3>
+      <div id="messages"></div>
     </div>
   </div>
-</div>
 
-<!-- 浮動聊天室按鈕 -->
-<button id="chatBtn" onclick="toggleChat()" style="position:fixed;bottom:20px;right:20px;border-radius:50%;width:50px;height:50px;font-size:24px;z-index:999;">💬</button>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { 
+      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { 
+      getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc 
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-<!-- 全螢幕聊天室 -->
-<div id="chatWindow">
-  <div style="padding:10px; background:#4285F4; color:white; display:flex; justify-content:space-between; align-items:center;">
-    <span>學生聊天室</span>
-    <input id="nicknameInput" type="text" placeholder="暱稱" style="width:150px;" onblur="saveNickname()">
-    <button style="background:#f44336;padding:4px 8px;" onclick="toggleChat()">X</button>
-  </div>
-  <div id="chatBox"></div>
-  <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" onkeydown="handleChatEnter(event)"></textarea>
-  <button id="sendBtn" onclick="sendChat()">送出</button>
-</div>
+    // ✅ 你的 Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
+      authDomain: "text-585a6.firebaseapp.com",
+      projectId: "text-585a6",
+      storageBucket: "text-585a6.firebasestorage.app",
+      messagingSenderId: "789195223699",
+      appId: "1:789195223699:web:847902083fb646bda25366",
+      measurementId: "G-FL11M47EFP"
+    };
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
-const firebaseConfig={apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",authDomain:"text-585a6.firebaseapp.com",projectId:"text-585a6",storageBucket:"text-585a6.appspot.com",messagingSenderId:"789195223699",appId:"1:789195223699:web:847902083fb646bda25366"};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const provider = new GoogleAuthProvider();
+    console.log("Firebase script 已載入");
 
-let role="student", isAdmin=false, nickname=localStorage.getItem('nickname')||'我';
+    // 🔹 Google 登入
+    async function googleLogin() {
+      console.log("googleLogin() 被呼叫");
+      try {
+        await signInWithPopup(auth, provider);
+        console.log("登入成功");
+      } catch (e) {
+        console.error("登入錯誤：", e);
+        alert("登入失敗：" + e.message);
+      }
+    }
 
-async function googleLogin(){ try{ await signInWithPopup(auth,provider); } catch(e){ alert("登入失敗:"+e.message);} }
-async function logout(){ await signOut(auth); location.reload(); }
+    // 🔹 登出
+    async function logout() {
+      await signOut(auth);
+      location.reload();
+    }
 
-function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
-function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
+    // 🔹 老師寫聯絡簿
+    async function addNote() {
+      const content = document.getElementById("note").value.trim();
+      if (!content) return alert("請輸入內容！");
+      await addDoc(collection(db, "notes"), {
+        author: auth.currentUser.displayName,
+        email: auth.currentUser.email,
+        content: content,
+        time: new Date().toLocaleString()
+      });
+      document.getElementById("note").value = "";
+      loadNotes();
+    }
 
-function previewImage(event){ const preview=document.getElementById("preview"); const file=event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src=""; preview.style.display="none";} }
+    // 🔹 載入聯絡簿
+    async function loadNotes() {
+      const querySnapshot = await getDocs(collection(db, "notes"));
+      const messagesEl = document.getElementById("messages");
+      messagesEl.innerHTML = "";
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        messagesEl.innerHTML += `
+          <div class='note'>
+            <b>${data.author}</b>（${data.email}）<br>
+            ${data.content}<br>
+            <small>${data.time}</small>
+          </div>`;
+      });
+    }
 
-function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=win.style.display==="none"?"flex":"none"; }
-function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
+    // 🔹 登入監聽
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log("使用者登入：", user.email);
+        document.getElementById("login-section").style.display = "none";
+        document.getElementById("app").style.display = "block";
+        document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
 
-onAuthStateChanged(auth,async(user)=>{
-  if(user){
-    document.getElementById("login-section").style.display="none"; document.getElementById("app").style.display="block";
-    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-    const userRef=doc(db,"users",user.email); const userDoc=await getDoc(userRef);
-    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} else{ role=userDoc.data().role; }
-    if(user.email==="chianghansen0302@gmail.com") isAdmin=true;
-    if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
-    if(isAdmin) document.getElementById("admin-panel").style.display="block";
-    if(role==="teacher") document.getElementById("recycle-section").style.display="block";
-    nickname=localStorage.getItem('nickname')||user.displayName||'我';
-    document.getElementById("nicknameInput").value=nickname;
-  }
-});
+        // 若無角色資料則預設為學生
+        const userRef = doc(db, "users", user.email);
+        const userDoc = await getDoc(userRef);
+        let role = "student";
+        if (!userDoc.exists()) {
+          await setDoc(userRef, { role: "student" });
+        } else {
+          role = userDoc.data().role;
+        }
 
-// 這裡你可以加上 addNote()、sendChat()、教師管理等功能的完整 JS
-// 之前我們討論過的回收站、編輯、刪除、復原、聊天室訊息發送功能都可以接在這裡
-</script>
+        // 老師可寫
+        if (role === "teacher") {
+          document.getElementById("teacher-panel").style.display = "block";
+        }
+
+        loadNotes();
+      } else {
+        console.log("尚未登入");
+      }
+    });
+
+    // ✅ 掛到全域（讓 HTML onclick 找得到）
+    window.googleLogin = googleLogin;
+    window.logout = logout;
+    window.addNote = addNote;
+  </script>
 </body>
 </html>
