@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（最終版+聊天室+回收站）</title>
+<title>聯絡簿系統（最終版+聊天室+回收站+編輯）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family:"微軟正黑體"; background:#f2f5fa; text-align:center; padding:20px; }
@@ -125,7 +125,7 @@ let role="student", isAdmin=false, nickname=localStorage.getItem('nickname')||'�
 async function googleLogin(){ try{ await signInWithPopup(auth,provider); } catch(e){ alert("登入失敗:"+e.message);} }
 async function logout(){ await signOut(auth); location.reload(); }
 
-// 輸入 Enter 送出
+// Enter 送出
 function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
 function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
 
@@ -140,12 +140,12 @@ function previewImage(event){
   } else{preview.src=""; preview.style.display="none";} 
 }
 
-// 聊天室開關與暱稱儲存
+// 聊天室開關
 function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=(win.style.display==="none" || win.style.display==="")?"flex":"none"; }
 function closeChat(){ document.getElementById("chatWindow").style.display="none"; }
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
 
-// 登入後判斷角色
+// 登入後初始化
 onAuthStateChanged(auth,async(user)=>{
   if(user){
     document.getElementById("login-section").style.display="none"; 
@@ -167,7 +167,7 @@ onAuthStateChanged(auth,async(user)=>{
 
     listenNotes();
     listenRecycle();
-    listenChat(); // 啟動聊天室訊息監聽
+    listenChat(); // 啟動聊天室
   }
 });
 
@@ -207,7 +207,7 @@ function listenNotes(){
     messages.innerHTML="";
     snapshot.forEach(doc=>{
       const data=doc.data();
-      if(data.deleted) return; // 刪除的先不顯示
+      if(data.deleted) return;
       const div=document.createElement("div");
       div.className="note";
       div.innerHTML=`<div>${data.text}</div>
@@ -244,7 +244,7 @@ function listenRecycle(){
 async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
 async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
 
-// 教師管理（最高權限）
+// 教師管理
 async function addTeacher(){
   const email=document.getElementById("newTeacherEmail").value.trim();
   if(!email) return;
@@ -258,7 +258,7 @@ async function removeTeacher(){
   alert("刪除教師成功");
 }
 
-// 聊天室監聽
+// 聊天室
 function listenChat(){
   const q=query(collection(db,"chat"),orderBy("timestamp","asc"));
   onSnapshot(q,snapshot=>{
@@ -279,7 +279,6 @@ function listenChat(){
   });
 }
 
-// 發送聊天訊息
 async function sendChat(){
   const msg=document.getElementById("chatInput").value.trim();
   if(!msg) return;
