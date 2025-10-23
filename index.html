@@ -16,7 +16,15 @@ textarea { height:100px; resize:none; }
 small { color:gray; display:block; margin-top:4px; }
 a { color:#4285F4; word-break: break-all; }
 .link-div { margin-top:2px; }
+
+/* 聊天室樣式 */
+#chatWindow { display:none; position:fixed; bottom:80px; right:20px; width:300px; height:0; background:#fff; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2); z-index:999; flex-direction:column; overflow:hidden; transition:height 0.3s ease;}
 #chatBox { flex:1; overflow-y:auto; padding:8px;}
+#chatBox div{ margin-bottom:4px; display:flex; width:100%; }
+.chat-msg{ padding:6px 10px; border-radius:10px; max-width:70%; word-break:break-word; }
+.chat-nickname{ font-weight:bold; font-size:14px; margin-bottom:2px; }
+.chat-content{ font-size:12px; white-space:pre-wrap; }
+.chat-time{ font-size:10px; color:gray; text-align:right; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -63,8 +71,8 @@ a { color:#4285F4; word-break: break-all; }
 <!-- 浮動聊天室按鈕 -->
 <button id="chatBtn" style="position:fixed;bottom:20px;right:20px;border-radius:50%;width:50px;height:50px;font-size:24px;z-index:999;">💬</button>
 
-<!-- 聊天室視窗（初始隱藏，縮小） -->
-<div id="chatWindow" style="display:none;position:fixed;bottom:80px;right:20px;width:300px;height:0;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.2);z-index:999;flex-direction:column;overflow:hidden;transition:height 0.3s ease;">
+<!-- 聊天室視窗 -->
+<div id="chatWindow">
   <div style="padding:6px;background:#4285F4;color:white;border-top-left-radius:8px;border-top-right-radius:8px;display:flex;justify-content:space-between;align-items:center;">
     <span>學生聊天室</span>
     <input id="nicknameInput" type="text" placeholder="暱稱" style="width:120px;" onblur="saveNickname()">
@@ -81,41 +89,22 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, collection, addDoc, doc, setDoc, query, onSnapshot, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-  authDomain: "text-585a6.firebaseapp.com",
-  projectId: "text-585a6",
-  storageBucket: "text-585a6.appspot.com",
-  messagingSenderId: "789195223699",
-  appId: "1:789195223699:web:847902083fb646bda25366",
-  measurementId: "G-FL11M47EFP"
-};
-
+const firebaseConfig = {apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",authDomain:"text-585a6.firebaseapp.com",projectId:"text-585a6",storageBucket:"text-585a6.appspot.com",messagingSenderId:"789195223699",appId:"1:789195223699:web:847902083fb646bda25366",measurementId:"G-FL11M47EFP"};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const provider = new GoogleAuthProvider();
 
-let role="student";
-let isAdmin=false;
-let nickname = localStorage.getItem('nickname') || '我';
+let role="student"; let isAdmin=false; let nickname = localStorage.getItem('nickname') || '我';
 
-// 登入/登出
 async function googleLogin(){ try{ await signInWithPopup(auth,provider);} catch(e){ alert("登入失敗:"+e.message);} }
 async function logout(){ await signOut(auth); location.reload(); }
-
-// Shift+Enter換行
 function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
 function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
-
-// 圖片預覽
 function previewImage(event){ const preview=document.getElementById("preview"); const file=event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src="";preview.style.display="none";} }
-
-// 超連結文字
 function linkify(text){ const urlPattern=/(https?:\/\/[^\s]+)/g; return text.replace(urlPattern,"<a href='$1' target='_blank'>$1</a>"); }
 
-// 新增/更新筆記
 async function addNote(update=false,docId=null,div=null){
   const content=document.getElementById("note").value.trim();
   const link=document.getElementById("linkInput").value.trim()||null;
@@ -128,45 +117,32 @@ async function addNote(update=false,docId=null,div=null){
     const linksArray=Array.from(div.querySelectorAll(".editable-link")).map(a=>a.innerText);
     await setDoc(doc(db,"notes",docId),{author:div.dataset.author,email:div.dataset.email,content:text,imageUrl:div.dataset.newImage||div.dataset.image||imageUrl||null,links:linksArray,time:new Date().toLocaleString(),deleted:false});
     div.dataset.image=div.dataset.newImage||div.dataset.image||imageUrl||null; div.dataset.newImage="";
-  } else {
-    const newLinks=link?[link]:[];
-    await addDoc(collection(db,"notes"),{author:auth.currentUser.displayName,email:auth.currentUser.email,content:content,imageUrl:imageUrl,links:newLinks,time:new Date().toLocaleString(),deleted:false});
-  }
+  } else { const newLinks=link?[link]:[]; await addDoc(collection(db,"notes"),{author:auth.currentUser.displayName,email:auth.currentUser.email,content:content,imageUrl:imageUrl,links:newLinks,time:new Date().toLocaleString(),deleted:false}); }
   document.getElementById("note").value=""; document.getElementById("linkInput").value=""; fileInput.value=""; document.getElementById("preview").style.display="none";
   maintainLatestFive();
 }
 
-// 保留最新5筆筆記
 async function maintainLatestFive(){
   const snap=await getDocs(collection(db,"notes"));
   const docs=snap.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
-  for(let i=5;i<docs.length;i++){
-    const d=docs[i].data(); await setDoc(doc(db,"notes",docs[i].id),{...d,deleted:true});
-  }
+  for(let i=5;i<docs.length;i++){ const d=docs[i].data(); await setDoc(doc(db,"notes",docs[i].id),{...d,deleted:true}); }
 }
 
-// 刪除/復原筆記
 async function deleteNote(id){ const d=await getDoc(doc(db,"notes",id)); await setDoc(doc(db,"notes",id),{...d.data(),deleted:true}); }
 async function restoreNote(id){ const d=await getDoc(doc(db,"notes",id)); await setDoc(doc(db,"notes",id),{...d.data(),deleted:false}); }
 
-// 教師帳號管理
 async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email)return alert("請輸入"); await setDoc(doc(db,"users",email),{role:"teacher"}); alert("新增完成");}
 async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email)return alert("請輸入"); await setDoc(doc(db,"users",email),{role:"student"}); alert("刪除完成");}
 
-// 暱稱
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname);}}
 
-// 聊天室切換
 function toggleChat(){ const win=document.getElementById("chatWindow"); if(win.style.display==="none" || win.style.height==="0px"){ win.style.display="flex"; setTimeout(()=>{ win.style.height="400px"; },10);} else{ win.style.height="0"; setTimeout(()=>{ win.style.display="none"; },300);} }
 document.getElementById("chatBtn").addEventListener("click", toggleChat);
 
-// 送訊息
 async function sendChat(){ const text=document.getElementById("chatInput").value.trim(); if(!text)return; await addDoc(collection(db,"chat"),{author:auth.currentUser.email,nickname:nickname,content:text,time:new Date().toLocaleString(),deleted:false}); document.getElementById("chatInput").value="";}
 
-// 刪除訊息
 async function deleteChat(id){ const d=await getDoc(doc(db,"chat",id)); await setDoc(doc(db,"chat",id),{...d.data(),deleted:true});}
 
-// 渲染筆記
 function renderNotes(){
   const q=query(collection(db,"notes"));
   onSnapshot(q,snap=>{
@@ -188,7 +164,6 @@ function renderNotes(){
   });
 }
 
-// 渲染聊天室
 function renderChat(){
   const q=query(collection(db,"chat"));
   onSnapshot(q,snap=>{
@@ -196,10 +171,11 @@ function renderChat(){
     snap.docs.sort((a,b)=>new Date(a.data().time)-new Date(b.data().time)).forEach(docSnap=>{
       const d=docSnap.data(); if(d.deleted && role!=="teacher") return;
       const isMe=d.author===auth.currentUser.email;
-      const div=document.createElement("div"); div.style.display="flex"; div.style.justifyContent=isMe?"flex-end":"flex-start"; div.style.marginBottom="4px";
-      div.innerHTML=`<div style="background:${isMe?'#4285F4':'#e0e0e0'};color:${isMe?'white':'black'};padding:6px 10px;border-radius:10px;max-width:70%;word-break:break-word;">
-        <b>${d.nickname}</b><br>${d.content.replace(/\n/g,'<br>')}
-        <div style="font-size:10px;color:${isMe?'#cce0ff':'gray'};text-align:right;">${d.time}</div>
+      const div=document.createElement("div"); div.style.justifyContent=isMe?"flex-end":"flex-start"; div.style.width="100%";
+      div.innerHTML=`<div class="chat-msg" style="background:${isMe?'#4285F4':'#e0e0e0'}; color:${isMe?'white':'black'};">
+        <div class="chat-nickname">${d.nickname}</div>
+        <div class="chat-content">${d.content.replace(/\n/g,'<br>')}</div>
+        <div class="chat-time">${d.time}</div>
         ${role==="teacher"?`<button onclick='deleteChat("${docSnap.id}")' style="font-size:10px;margin-top:2px;">刪除</button>`:""}
       </div>`;
       chatBox.appendChild(div); chatBox.scrollTop=chatBox.scrollHeight;
@@ -207,7 +183,6 @@ function renderChat(){
   });
 }
 
-// 登入監聽
 onAuthStateChanged(auth,async(user)=>{
   if(user){
     document.getElementById("login-section").style.display="none";
@@ -223,7 +198,6 @@ onAuthStateChanged(auth,async(user)=>{
   }
 });
 
-// 掛到全域
 window.googleLogin=googleLogin; window.logout=logout; window.addNote=addNote;
 window.addTeacher=addTeacher; window.removeTeacher=removeTeacher;
 window.deleteNote=deleteNote; window.restoreNote=restoreNote;
