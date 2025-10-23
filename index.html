@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（最終版+聊天室+回收站+編輯）</title>
+<title>聯絡簿系統（最終版+聊天室）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family:"微軟正黑體"; background:#f2f5fa; text-align:center; padding:20px; }
@@ -18,15 +18,7 @@ a{color:#4285F4; word-break:break-all;}
 .link-div{margin-top:2px;}
 
 /* 聊天室樣式 */
-#chatWindow{
-  display:none;
-  position:fixed;
-  top:0; left:0;
-  width:100%; height:100%;
-  background:#f2f5fa;
-  z-index:1000;
-  flex-direction:column;
-}
+#chatWindow{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#f2f5fa;z-index:1000;flex-direction:column;}
 #chatBox{flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column;}
 .chat-container{display:flex; margin-bottom:6px;}
 .chat-container.me{justify-content:flex-end;}
@@ -37,9 +29,34 @@ a{color:#4285F4; word-break:break-all;}
 .chat-nickname{font-weight:bold; font-size:14px; margin-bottom:2px;}
 .chat-content{font-size:12px; white-space:pre-wrap;}
 .chat-time{font-size:10px; color:gray; text-align:right; margin-top:2px;}
-#chatInput{width:90%; max-width:800px; min-width:200px; height:60px; padding:8px; margin:10px auto; display:block; border-radius:8px; border:1px solid #ccc; resize:none; font-size:14px; box-sizing:border-box;}
-#sendBtn{width:90%; max-width:800px; margin:0 auto 10px auto; display:block; padding:8px; border-radius:6px; background:#4285F4; color:white; border:none; cursor:pointer; font-size:14px;}
-#sendBtn:hover{background:#3367D6;}
+#chatInput {
+  width: 90%; 
+  max-width: 800px; 
+  min-width: 300px; 
+  height: 120px; 
+  padding: 10px; 
+  margin: 10px auto; 
+  display: block; 
+  border-radius: 8px; 
+  border: 1px solid #ccc; 
+  resize: vertical; 
+  font-size: 14px; 
+  box-sizing: border-box;
+}
+#sendBtn {
+  width: 90%;
+  max-width: 800px;
+  margin: 0 auto 10px auto;
+  display: block;
+  padding: 10px;
+  border-radius: 6px;
+  background: #4285F4;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+}
+#sendBtn:hover { background:#3367D6; }
 </style>
 </head>
 <body>
@@ -92,7 +109,7 @@ a{color:#4285F4; word-break:break-all;}
   <div style="padding:10px; background:#4285F4; color:white; display:flex; justify-content:space-between; align-items:center;">
     <span>學生聊天室</span>
     <input id="nicknameInput" type="text" placeholder="暱稱" style="width:150px;" onblur="saveNickname()">
-    <button style="background:#f44336;padding:4px 8px;" onclick="closeChat()">返回聯絡簿</button>
+    <button style="background:#f44336;padding:4px 8px;" onclick="toggleChat()">返回聯絡簿</button>
   </div>
   <div id="chatBox"></div>
   <textarea id="chatInput" placeholder="輸入訊息...(Shift+Enter換行)" onkeydown="handleChatEnter(event)"></textarea>
@@ -102,17 +119,10 @@ a{color:#4285F4; word-break:break-all;}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
-const firebaseConfig={
-  apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-  authDomain:"text-585a6.firebaseapp.com",
-  projectId:"text-585a6",
-  storageBucket:"text-585a6.appspot.com",
-  messagingSenderId:"789195223699",
-  appId:"1:789195223699:web:847902083fb646bda25366"
-};
+const firebaseConfig={apiKey:"AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",authDomain:"text-585a6.firebaseapp.com",projectId:"text-585a6",storageBucket:"text-585a6.appspot.com",messagingSenderId:"789195223699",appId:"1:789195223699:web:847902083fb646bda25366"};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -121,37 +131,20 @@ const provider = new GoogleAuthProvider();
 
 let role="student", isAdmin=false, nickname=localStorage.getItem('nickname')||'我';
 
-// 登入登出
 async function googleLogin(){ try{ await signInWithPopup(auth,provider); } catch(e){ alert("登入失敗:"+e.message);} }
 async function logout(){ await signOut(auth); location.reload(); }
 
-// Enter 送出
 function handleEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); addNote(); } }
 function handleChatEnter(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendChat(); } }
-
-// 預覽圖片
-function previewImage(event){ 
-  const preview=document.getElementById("preview"); 
-  const file=event.target.files[0]; 
-  if(file){ 
-    const reader=new FileReader(); 
-    reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; 
-    reader.readAsDataURL(file);
-  } else{preview.src=""; preview.style.display="none";} 
-}
-
-// 聊天室開關
-function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=(win.style.display==="none" || win.style.display==="")?"flex":"none"; }
-function closeChat(){ document.getElementById("chatWindow").style.display="none"; }
+function previewImage(event){ const preview=document.getElementById("preview"); const file=event.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=e=>{preview.src=e.target.result; preview.style.display="block";}; reader.readAsDataURL(file);} else{preview.src=""; preview.style.display="none";} }
+function toggleChat(){ const win=document.getElementById("chatWindow"); win.style.display=win.style.display==="none"?"flex":"none"; }
 function saveNickname(){ const val=document.getElementById("nicknameInput").value.trim(); if(val){ nickname=val; localStorage.setItem('nickname',nickname); } }
 
-// 登入後初始化
 onAuthStateChanged(auth,async(user)=>{
   if(user){
     document.getElementById("login-section").style.display="none"; 
     document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-
     const userRef=doc(db,"users",user.email); 
     const userDoc=await getDoc(userRef);
     if(!userDoc.exists()){ await setDoc(userRef,{role:"student"});} 
@@ -160,7 +153,6 @@ onAuthStateChanged(auth,async(user)=>{
     if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
     if(isAdmin) document.getElementById("admin-panel").style.display="block";
     if(role==="teacher") document.getElementById("recycle-section").style.display="block";
-
     nickname=localStorage.getItem('nickname')||user.displayName||'我';
     document.getElementById("nicknameInput").value=nickname;
 
@@ -247,95 +239,80 @@ function listenRecycle(){
 async function deleteNote(id){ await setDoc(doc(db,"notes",id),{deleted:true},{merge:true}); }
 async function restoreNote(id){ await setDoc(doc(db,"notes",id),{deleted:false},{merge:true}); }
 
-// 編輯聯絡簿（表單版）
+// 編輯聯絡簿
 function editNote(id){
-  const noteDiv = document.getElementById(`text-${id}`).parentElement;
-  const textDiv = document.getElementById(`text-${id}`);
-  const linkDiv = document.getElementById(`link-${id}`);
-  const imgEl = document.getElementById(`img-${id}`);
+  const noteDiv=document.getElementById(`text-${id}`).parentElement;
+  const textDiv=document.getElementById(`text-${id}`);
+  const linkDiv=document.getElementById(`link-${id}`);
+  const imgEl=document.getElementById(`img-${id}`);
 
-  const textVal = textDiv.innerText;
-  const linkVal = linkDiv ? linkDiv.innerText : "";
-  const imgSrc = imgEl ? imgEl.src : "";
+  const textVal=textDiv.innerText;
+  const linkVal=linkDiv?linkDiv.innerText:"";
+  const imgSrc=imgEl?imgEl.src:"";
 
-  noteDiv.innerHTML = `
+  noteDiv.innerHTML=`
     <textarea id="edit-text-${id}">${textVal}</textarea><br>
     <input type="url" id="edit-link-${id}" placeholder="連結" value="${linkVal}"><br>
     <input type="file" id="edit-image-${id}" accept="image/*"><br>
-    ${imgSrc ? `<img id="edit-img-preview-${id}" src="${imgSrc}" style="max-width:100px;margin-top:4px;">` : ""}
+    ${imgSrc?`<img id="edit-img-preview-${id}" src="${imgSrc}" style="max-width:100px;margin-top:4px;">`:""}
     <button onclick="saveEdit('${id}')">儲存</button>
     <button onclick="cancelEdit('${id}')">取消</button>
   `;
 }
 
 async function saveEdit(id){
-  const newText = document.getElementById(`edit-text-${id}`).value.trim();
-  const newLink = document.getElementById(`edit-link-${id}`).value.trim();
-  const fileInput = document.getElementById(`edit-image-${id}`);
-  let newImageUrl = document.getElementById(`edit-img-preview-${id}`)?.src || "";
+  const newText=document.getElementById(`edit-text-${id}`).value;
+  const newLink=document.getElementById(`edit-link-${id}`).value;
+  const newFile=document.getElementById(`edit-image-${id}`).files[0];
+  let newImageUrl="";
 
-  if(fileInput && fileInput.files[0]){
-    const file = fileInput.files[0];
-    const imgRef = ref(storage, "notes/"+Date.now()+"_"+file.name);
-    await uploadBytes(imgRef, file);
-    newImageUrl = await getDownloadURL(imgRef);
+  if(newFile){
+    const imgRef=ref(storage,"notes/"+Date.now()+"_"+newFile.name);
+    await uploadBytes(imgRef,newFile);
+    newImageUrl=await getDownloadURL(imgRef);
   }
 
-  await setDoc(doc(db,"notes",id),{
-    text: newText,
-    link: newLink,
-    image: newImageUrl
-  }, {merge:true});
+  const dataUpdate={text:newText, link:newLink};
+  if(newImageUrl) dataUpdate.image=newImageUrl;
+
+  await setDoc(doc(db,"notes",id),dataUpdate,{merge:true});
 }
 
 function cancelEdit(id){ listenNotes(); }
 
-// 教師管理
-async function addTeacher(){
-  const email=document.getElementById("newTeacherEmail").value.trim();
-  if(!email) return;
-  await setDoc(doc(db,"users",email),{role:"teacher"});
-  alert("新增教師成功");
-}
-async function removeTeacher(){
-  const email=document.getElementById("deleteTeacherEmail").value.trim();
-  if(!email) return;
-  await setDoc(doc(db,"users",email),{role:"student"});
-  alert("刪除教師成功");
+// 聊天室
+async function sendChat(){
+  const text=document.getElementById("chatInput").value.trim();
+  if(!text) return;
+  await addDoc(collection(db,"chat"),{
+    text,
+    nickname,
+    timestamp:Date.now()
+  });
+  document.getElementById("chatInput").value="";
 }
 
-// 聊天室
 function listenChat(){
-  const q=query(collection(db,"chat"),orderBy("timestamp","asc"));
+  const q=query(collection(db,"chat"),orderBy("timestamp"));
   onSnapshot(q,snapshot=>{
-    const chatBox=document.getElementById("chatBox");
-    chatBox.innerHTML="";
+    const box=document.getElementById("chatBox");
+    box.innerHTML="";
     snapshot.forEach(doc=>{
       const data=doc.data();
       const div=document.createElement("div");
-      div.className=(data.author===auth.currentUser.email)?"chat-container me":"chat-container other";
-      div.innerHTML=`<div class="chat-msg">
-        <span class="chat-nickname">${data.nickname}</span>
-        <span class="chat-content">${data.message}</span>
-        <span class="chat-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
-      </div>`;
-      chatBox.appendChild(div);
-      chatBox.scrollTop=chatBox.scrollHeight;
+      div.className="chat-container other";
+      if(data.nickname===nickname) div.className="chat-container me";
+      div.innerHTML=`<div class="chat-msg"><div class="chat-nickname">${data.nickname}</div><div class="chat-content">${data.text}</div><div class="chat-time">${new Date(data.timestamp).toLocaleTimeString()}</div></div>`;
+      box.appendChild(div);
+      box.scrollTop=box.scrollHeight;
     });
   });
 }
 
-async function sendChat(){
-  const msg=document.getElementById("chatInput").value.trim();
-  if(!msg) return;
-  await addDoc(collection(db,"chat"),{
-    nickname,
-    message: msg,
-    timestamp: Date.now(),
-    author: auth.currentUser.email
-  });
-  document.getElementById("chatInput").value="";
-}
+// 教師帳號管理
+async function addTeacher(){ const email=document.getElementById("newTeacherEmail").value.trim(); if(!email) return; await setDoc(doc(db,"users",email),{role:"teacher"}); alert("新增成功"); }
+async function removeTeacher(){ const email=document.getElementById("deleteTeacherEmail").value.trim(); if(!email) return; await setDoc(doc(db,"users",email),{role:"student"},{merge:true}); alert("刪除成功"); }
+
 </script>
 </body>
 </html>
