@@ -2,30 +2,24 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>聯絡簿系統</title>
+  <title>聯絡簿系統（Google 登入版）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: "微軟正黑體"; background: #f7f9fc; text-align: center; padding: 20px; }
+    body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
     h1 { color: #2c3e50; }
-    input, select, textarea { padding: 8px; margin: 6px; width: 80%; max-width: 400px; }
-    button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #2980b9; }
-    #messages { margin-top: 20px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
-    .note { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #3367D6; }
+    textarea { width: 80%; max-width: 420px; height: 100px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
+    #messages { margin-top: 25px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    small { color: gray; }
   </style>
 </head>
 <body>
   <h1>📘 聯絡簿系統</h1>
 
-  <div id="auth-section">
-    <input type="email" id="email" placeholder="Email"><br>
-    <input type="password" id="password" placeholder="密碼"><br>
-    <select id="role">
-      <option value="teacher">老師</option>
-      <option value="student">學生</option>
-    </select><br>
-    <button onclick="register()">註冊</button>
-    <button onclick="login()">登入</button>
+  <div id="login-section">
+    <button onclick="googleLogin()">使用 Google 登入</button>
   </div>
 
   <div id="app" style="display:none;">
@@ -45,12 +39,11 @@
   </div>
 
   <script type="module">
-    // 導入 Firebase 套件
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // ✅ 替換成你自己的 Firebase 設定
+    // ✅ 換成你的 Firebase 設定
     const firebaseConfig = {
       apiKey: "你的_apiKey",
       authDomain: "你的_authDomain",
@@ -60,70 +53,76 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
-    // 註冊
-    async function register() {
-      const email = emailEl.value;
-      const password = passwordEl.value;
-      const role = roleEl.value;
-      await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", email), { role: role });
-      alert("註冊成功！");
+    // 🔹 Google 登入
+    async function googleLogin() {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        console.error(e);
+        alert("登入失敗！");
+      }
     }
 
-    // 登入
-    async function login() {
-      const email = emailEl.value;
-      const password = passwordEl.value;
-      await signInWithEmailAndPassword(auth, email, password);
-      alert("登入成功！");
-    }
-
-    // 登出
+    // 🔹 登出
     async function logout() {
       await signOut(auth);
       location.reload();
     }
 
-    // 老師送出聯絡簿
+    // 🔹 老師寫聯絡簿
     async function addNote() {
-      const content = document.getElementById("note").value;
+      const content = document.getElementById("note").value.trim();
       if (!content) return alert("請輸入內容！");
       await addDoc(collection(db, "notes"), {
-        author: auth.currentUser.email,
+        author: auth.currentUser.displayName,
+        email: auth.currentUser.email,
         content: content,
         time: new Date().toLocaleString()
       });
-      alert("已送出！");
+      document.getElementById("note").value = "";
       loadNotes();
     }
 
-    // 載入所有聯絡簿
+    // 🔹 載入聯絡簿
     async function loadNotes() {
       const querySnapshot = await getDocs(collection(db, "notes"));
       const messagesEl = document.getElementById("messages");
       messagesEl.innerHTML = "";
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        messagesEl.innerHTML += `<div class='note'><b>${data.author}</b><br>${data.content}<br><small>${data.time}</small></div>`;
+        messagesEl.innerHTML += `
+          <div class='note'>
+            <b>${data.author}</b>（${data.email}）<br>
+            ${data.content}<br>
+            <small>${data.time}</small>
+          </div>`;
       });
     }
 
-    // 監聽登入狀態
-    const emailEl = document.getElementById("email");
-    const passwordEl = document.getElementById("password");
-    const roleEl = document.getElementById("role");
-
+    // 🔹 登入監聽
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        document.getElementById("auth-section").style.display = "none";
+        document.getElementById("login-section").style.display = "none";
         document.getElementById("app").style.display = "block";
-        document.getElementById("user-info").innerText = `👋 歡迎 ${user.email}`;
-        const userDoc = await getDoc(doc(db, "users", user.email));
-        const role = userDoc.exists() ? userDoc.data().role : "student";
+        document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
+
+        // 若無角色資料則預設為學生
+        const userRef = doc(db, "users", user.email);
+        const userDoc = await getDoc(userRef);
+        let role = "student";
+        if (!userDoc.exists()) {
+          await setDoc(userRef, { role: "student" });
+        } else {
+          role = userDoc.data().role;
+        }
+
+        // 老師可寫
         if (role === "teacher") {
           document.getElementById("teacher-panel").style.display = "block";
         }
+
         loadNotes();
       }
     });
