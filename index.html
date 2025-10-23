@@ -14,7 +14,7 @@ textarea { height: 100px; resize: none; }
 input[type=file] { margin-top: 5px; }
 .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); position: relative; text-align:left; }
 .note img { max-width: 100%; margin-top: 5px; border-radius: 6px; }
-.editable { min-height: 20px; }
+.editable { min-height: 20px; white-space: pre-wrap; } /* 保留換行 */
 small { color: gray; display: block; margin-top: 5px; }
 hr { margin: 25px 0; border: 0.5px solid #ccc; }
 a { color: #4285F4; word-break: break-all; }
@@ -114,10 +114,11 @@ async function addNote(update=false, docId=null, div=null){
   }
 
   if(update && docId && div){
+    const text = div.innerText; // 直接編輯文字保留換行
     await setDoc(doc(db,"notes",docId),{
       author: div.dataset.author,
       email: div.dataset.email,
-      content: div.innerText,
+      content: text,
       imageUrl: div.dataset.newImage || div.dataset.image || imageUrl || null,
       link: div.dataset.newLink || div.dataset.link || link,
       time: new Date().toLocaleString()
@@ -154,10 +155,11 @@ async function addNote(update=false, docId=null, div=null){
 async function saveEdit(docId, div){
   await addOrUpdateImage(div);
   await addOrUpdateLink(div);
+  const text = div.innerText;
   await setDoc(doc(db,"notes",docId),{
     author: div.dataset.author,
     email: div.dataset.email,
-    content: div.innerText,
+    content: text,
     imageUrl: div.dataset.image || null,
     link: div.dataset.link || null,
     time: new Date().toLocaleString()
@@ -199,9 +201,76 @@ function renderNotes(snapshot){
     const divId = `note_${doc.id}`;
     let contentEditable = role==="teacher"? "contenteditable='true'" : "";
 
+    let contentHTML = (data.content||"").replace(/\n/g,"<br>");
+
     let html = `<div class='note'>
       <b>${data.author}</b>（${data.email}）<br>
       <div id='${divId}' class='editable' ${contentEditable} 
            data-author='${data.author}' data-email='${data.email}' 
-           data-image='${data.imageUrl||""}' data-link='${data.link||""}'>${data.content||""}</div>`;
-    if(data.imageUrl) html+=`<img src='${data.imageUrl}' class='note-img'
+           data-image='${data.imageUrl||""}' data-link='${data.link||""}'>${contentHTML}</div>`;
+
+    if(data.link) html += `<br><a href='${data.link}' target='_blank'>${data.link}</a>`;
+    if(data.imageUrl) html += `<br><img src='${data.imageUrl}' class='note-img'>`;
+
+    if(role==="teacher"){
+      html+=`<input type='file' id='file_${doc.id}' onchange='previewInlineImage(event,"${doc.id}")'><br>
+             <input type='url' placeholder='編輯連結' id='link_${doc.id}' value='${data.link||""}' 
+             oninput='document.getElementById("${divId}").dataset.newLink=this.value'><br>
+             <button onclick='saveEdit("${doc.id}",document.getElementById("${divId}"))'>更新</button>
+             <button onclick='deleteNote("${doc.id}")'>刪除</button>`;
+    }
+
+    html+=`<small>${data.time}</small></div>`;
+    if(first){ messagesEl.innerHTML += html; first=false; }
+    else historyEl.innerHTML += html;
+  });
+}
+
+function previewInlineImage(event,id){
+  const file = event.target.files[0];
+  if(file){
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const div = document.getElementById(`note_${id}`);
+      div.dataset.newImage = "";
+      const existingImg = div.querySelector("img");
+      if(existingImg) existingImg.src = e.target.result;
+      else {
+        const img = document.createElement("img");
+        img.src = e.target.result;
+        img.className = "note-img";
+        div.appendChild(img);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+onAuthStateChanged(auth, async user=>{
+  if(user){
+    document.getElementById("login-section").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
+    
+    const userRef = doc(db,"users",user.email);
+    const userDoc = await getDocs(collection(db,"users"));
+    const teacherEmails = ["chianghansen0302@gmail.com","1130404@gm.khjh.hc.edu.tw"];
+    if(teacherEmails.includes(user.email)) role="teacher";
+    else role="student";
+    
+    const q = query(collection(db,"notes"));
+    onSnapshot(q,renderNotes);
+  }
+});
+
+window.googleLogin = googleLogin;
+window.logout = logout;
+window.addNote = addNote;
+window.saveEdit = saveEdit;
+window.deleteNote = deleteNote;
+window.handleEnter = handleEnter;
+window.previewImage = previewImage;
+window.previewInlineImage = previewInlineImage;
+</script>
+</body>
+</html>
