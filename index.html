@@ -2,22 +2,24 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（升級版）</title>
+<title>聯絡簿系統（歷史7筆版）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
+body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
 h1 { color: #2c3e50; }
-button { padding: 8px 16px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; margin:2px; }
+button { padding: 6px 12px; margin: 2px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
 button:hover { background: #3367D6; }
-textarea { width: 80%; max-width: 420px; height: 80px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
-#messages { margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
+textarea { width: 80%; max-width: 420px; height: 60px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
+#latest, #history { margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
 .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.reply { background: #f7f7f7; padding: 6px 10px; border-radius: 8px; margin-top: 6px; margin-left: 12px; }
 small { color: gray; }
+.section-title { margin-top:20px; font-size:18px; font-weight:bold; color:#2c3e50; }
 </style>
 </head>
 <body>
 
-<h1>📘 聯絡簿系統（升級版）</h1>
+<h1>📘 聯絡簿系統（互動歷史7筆版）</h1>
 
 <div id="login-section">
   <button onclick="googleLogin()">使用 Google 登入</button>
@@ -41,18 +43,19 @@ small { color: gray; }
   </div>
 
   <div id="student-panel">
-    <h3>📖 聯絡簿內容</h3>
-    <div id="messages"></div>
     <button onclick="exportNotes()">⬇️ 導出聯絡簿（純文字）</button>
+    <div class="section-title">📌 最新聯絡簿</div>
+    <div id="latest"></div>
+    <div class="section-title">📜 聯絡簿歷史紀錄（只顯示最新7筆）</div>
+    <div id="history"></div>
   </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-// ✅ Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
   authDomain: "text-585a6.firebaseapp.com",
@@ -69,118 +72,109 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
 let currentUser = null;
+let currentUserRole = "student";
 
-// 🔹 Google 登入
-async function googleLogin() {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch(e) {
-    alert("登入失敗：" + e.message);
-  }
+async function googleLogin() { try { await signInWithPopup(auth, provider); } catch(e){ alert("登入失敗："+e.message);} }
+async function logout(){ await signOut(auth); location.reload();}
+async function addNote(){
+  const content=document.getElementById("note").value.trim();
+  if(!content)return alert("請輸入內容！");
+  await addDoc(collection(db,"notes"),{author:currentUser.displayName,email:currentUser.email,content:content,time:new Date().toLocaleString(),replies:[]});
+  document.getElementById("note").value="";
 }
-
-// 🔹 登出
-async function logout() {
-  await signOut(auth);
-  location.reload();
+async function editNote(id, oldContent){
+  const newContent=prompt("編輯內容：", oldContent);
+  if(newContent!==null){ await updateDoc(doc(db,"notes",id),{content:newContent}); }
 }
-
-// 🔹 新增筆記
-async function addNote() {
-  const content = document.getElementById("note").value.trim();
-  if(!content) return alert("請輸入內容！");
-  await addDoc(collection(db, "notes"), {
-    author: currentUser.displayName,
-    email: currentUser.email,
-    content: content,
-    time: new Date().toLocaleString()
-  });
-  document.getElementById("note").value = "";
-}
-
-// 🔹 編輯筆記
-async function editNote(id, oldContent) {
-  const newContent = prompt("編輯內容：", oldContent);
-  if(newContent !== null) {
-    await updateDoc(doc(db, "notes", id), { content: newContent });
-  }
-}
-
-// 🔹 刪除筆記
-async function deleteNote(id) {
-  if(confirm("確定要刪除這筆筆記？")) {
-    await deleteDoc(doc(db, "notes", id));
-  }
-}
-
-// 🔹 設定使用者角色
-async function setUserRole() {
-  const email = document.getElementById("role-email").value.trim();
-  const role = document.getElementById("role-select").value;
-  if(!email) return alert("請輸入 Email");
-  await setDoc(doc(db, "users", email), { role: role });
+async function deleteNote(id){ if(confirm("確定要刪除這筆筆記？")) await deleteDoc(doc(db,"notes",id)); }
+async function setUserRole(){
+  const email=document.getElementById("role-email").value.trim();
+  const role=document.getElementById("role-select").value;
+  if(!email)return alert("請輸入 Email");
+  await setDoc(doc(db,"users",email),{role:role});
   alert(`${email} 已設為 ${role}`);
 }
-
-// 🔹 導出筆記（純文字）
-async function exportNotes() {
-  const querySnapshot = await getDocs(collection(db, "notes"));
-  let text = "";
-  querySnapshot.forEach(doc => {
-    const data = doc.data();
-    text += `${data.time} | ${data.author} (${data.email})\n${data.content}\n\n`;
+async function exportNotes(){
+  const snapshot=await getDocs(collection(db,"notes"));
+  let text="";
+  snapshot.forEach(doc=>{
+    const data=doc.data();
+    text+=`${data.time} | ${data.author} (${data.email})\n${data.content}\n`;
+    if(data.replies) data.replies.forEach(r=>{ text+=`  └ ${r.author} (${r.email}): ${r.content} [${r.time}]\n`; });
+    text+="\n";
   });
-  const blob = new Blob([text], {type: "text/plain"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "聯絡簿.txt";
-  a.click();
+  const blob=new Blob([text],{type:"text/plain"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="聯絡簿.txt"; a.click();
   URL.revokeObjectURL(url);
 }
+async function replyNote(id){
+  const content=prompt("輸入回覆內容：");
+  if(!content) return;
+  const noteRef=doc(db,"notes",id);
+  const noteDoc=await getDoc(noteRef);
+  const data=noteDoc.data();
+  const newReply={author:currentUser.displayName,email:currentUser.email,content:content,time:new Date().toLocaleString()};
+  const replies=data.replies||[];
+  replies.push(newReply);
+  await updateDoc(noteRef,{replies:replies});
+}
 
-// 🔹 登入狀態監聽
-onAuthStateChanged(auth, async (user) => {
-  if(user) {
-    currentUser = user;
-    document.getElementById("login-section").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
+// 顯示筆記
+function renderNote(data, id){
+  let actions = "";
+  if(data.email===currentUser.email || currentUserRole==="teacher"){
+    actions = `<button onclick="editNote('${id}','${data.content.replace(/'/g,"\\'")}')">編輯</button>
+               <button onclick="deleteNote('${id}')">刪除</button>`;
+  }
 
-    // 確認角色
-    const userRef = doc(db, "users", user.email);
-    const userDoc = await getDoc(userRef);
-    let role = "student";
-    if(!userDoc.exists()) {
-      await setDoc(userRef, { role: "student" });
+  let repliesHtml = "";
+  if(data.replies && data.replies.length>0){
+    data.replies.forEach(r=>{
+      repliesHtml += `<div class="reply"><b>${r.author}</b> (${r.email}): ${r.content}<br><small>${r.time}</small></div>`;
+    });
+  }
+
+  return `
+    <div class="note">
+      <b>${data.author}</b> (${data.email})<br>
+      ${data.content}<br>
+      <small>${data.time}</small><br>
+      ${actions}
+      <button onclick="replyNote('${id}')">回覆</button>
+      ${repliesHtml}
+    </div>
+  `;
+}
+
+// 監聽登入狀態
+onAuthStateChanged(auth, async(user)=>{
+  if(user){
+    currentUser=user;
+    document.getElementById("login-section").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
+
+    const userRef=doc(db,"users",user.email);
+    const userDoc=await getDoc(userRef);
+    if(!userDoc.exists()){ 
+      await setDoc(userRef,{role:"student"}); 
+      currentUserRole="student";
     } else {
-      role = userDoc.data().role;
+      currentUserRole=userDoc.data().role;
     }
+    if(currentUserRole==="teacher") document.getElementById("teacher-panel").style.display="block";
 
-    if(role === "teacher") document.getElementById("teacher-panel").style.display = "block";
-
-    // 🔹 即時更新筆記
-    const notesQuery = query(collection(db, "notes"), orderBy("time", "desc"));
-    onSnapshot(notesQuery, snapshot => {
-      const messagesEl = document.getElementById("messages");
-      messagesEl.innerHTML = "";
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        const id = docSnap.id;
-        let actions = "";
-        // 只有作者或老師可編輯刪除
-        if(data.email === user.email || role === "teacher") {
-          actions = `<button onclick="editNote('${id}','${data.content.replace(/'/g,"\\'")}')">編輯</button>
-                     <button onclick="deleteNote('${id}')">刪除</button>`;
-        }
-        messagesEl.innerHTML += `
-        <div class='note'>
-          <b>${data.author}</b>（${data.email}）<br>
-          ${data.content}<br>
-          <small>${data.time}</small><br>
-          ${actions}
-        </div>`;
-      });
+    const notesQuery=query(collection(db,"notes"),orderBy("time","desc"));
+    onSnapshot(notesQuery,snapshot=>{
+      const latestEl=document.getElementById("latest");
+      const historyEl=document.getElementById("history");
+      latestEl.innerHTML=""; historyEl.innerHTML="";
+      const docs=snapshot.docs;
+      if(docs.length>0) latestEl.innerHTML = renderNote(docs[0].data(), docs[0].id);
+      for(let i=1;i<docs.length && i<=7;i++){
+        historyEl.innerHTML += renderNote(docs[i].data(), docs[i].id);
+      }
     });
 
   } else {
@@ -188,15 +182,15 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// 🔹 掛到全域
-window.googleLogin = googleLogin;
-window.logout = logout;
-window.addNote = addNote;
-window.editNote = editNote;
-window.deleteNote = deleteNote;
-window.setUserRole = setUserRole;
-window.exportNotes = exportNotes;
-
+// 全域
+window.googleLogin=googleLogin;
+window.logout=logout;
+window.addNote=addNote;
+window.editNote=editNote;
+window.deleteNote=deleteNote;
+window.setUserRole=setUserRole;
+window.exportNotes=exportNotes;
+window.replyNote=replyNote;
 </script>
 </body>
 </html>
