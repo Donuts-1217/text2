@@ -2,19 +2,19 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（完整版）</title>
+<title>聯絡簿系統（含最高權限）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
 h1 { color: #2c3e50; }
 button { padding: 6px 14px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; margin:2px; }
 button:hover { background: #3367D6; }
-textarea, input[type=url] { width: 80%; max-width: 420px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
+textarea, input[type=url], input[type=email] { width: 80%; max-width: 420px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; padding: 8px; }
 textarea { height: 100px; resize: none; }
 input[type=file] { margin-top: 5px; }
 .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); position: relative; text-align:left; }
 .note img { max-width: 100%; margin-top: 5px; border-radius: 6px; }
-.editable { min-height: 20px; white-space: pre-wrap; } /* 保留換行 */
+.editable { min-height: 20px; white-space: pre-wrap; } 
 small { color: gray; display: block; margin-top: 5px; }
 hr { margin: 25px 0; border: 0.5px solid #ccc; }
 a { color: #4285F4; word-break: break-all; }
@@ -31,6 +31,7 @@ a { color: #4285F4; word-break: break-all; }
   <p id="user-info"></p>
   <button onclick="logout()">登出</button>
 
+  <!-- 老師面板 -->
   <div id="teacher-panel" style="display:none;">
     <h3>✏️ 老師寫聯絡簿</h3>
     <textarea id="note" placeholder="輸入聯絡簿內容..." onkeydown="handleEnter(event)"></textarea><br>
@@ -38,6 +39,15 @@ a { color: #4285F4; word-break: break-all; }
     <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
     <img id="preview"><br>
     <button onclick="addNote()">送出</button>
+  </div>
+
+  <!-- 最高權限面板 -->
+  <div id="admin-panel" style="display:none;">
+    <h3>🛠 教師帳號管理（最高權限）</h3>
+    <input type="email" id="newTeacherEmail" placeholder="輸入教師Email">
+    <button onclick="addTeacher()">新增教師</button><br>
+    <input type="email" id="deleteTeacherEmail" placeholder="輸入教師Email刪除">
+    <button onclick="removeTeacher()">刪除教師</button>
   </div>
 
   <div id="student-panel">
@@ -54,7 +64,7 @@ a { color: #4285F4; word-break: break-all; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, query, onSnapshot, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, setDoc, query, onSnapshot, getDocs, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -74,6 +84,7 @@ const storage = getStorage(app);
 const provider = new GoogleAuthProvider();
 
 let role = "student";
+let isAdmin = false;
 
 async function googleLogin() {
   try { await signInWithPopup(auth, provider); } 
@@ -114,7 +125,7 @@ async function addNote(update=false, docId=null, div=null){
   }
 
   if(update && docId && div){
-    const text = div.innerText; // 直接編輯文字保留換行
+    const text = div.innerText;
     await setDoc(doc(db,"notes",docId),{
       author: div.dataset.author,
       email: div.dataset.email,
@@ -194,13 +205,12 @@ function renderNotes(snapshot){
   messagesEl.innerHTML="";
   historyEl.innerHTML="";
 
-  const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time)-new Date(a.data().time));
+  const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time)- new Date(a.data().time));
   let first=true;
   docs.forEach(doc=>{
     const data = doc.data();
     const divId = `note_${doc.id}`;
     let contentEditable = role==="teacher"? "contenteditable='true'" : "";
-
     let contentHTML = (data.content||"").replace(/\n/g,"<br>");
 
     let html = `<div class='note'>
@@ -246,18 +256,38 @@ function previewInlineImage(event,id){
   }
 }
 
+// 最高權限功能
+async function addTeacher(){
+  const email = document.getElementById("newTeacherEmail").value.trim();
+  if(!email) return alert("請輸入Email");
+  await setDoc(doc(db,"users",email), {role:"teacher"});
+  alert(email+" 已設為教師");
+}
+
+async function removeTeacher(){
+  const email = document.getElementById("deleteTeacherEmail").value.trim();
+  if(!email) return alert("請輸入Email");
+  const userRef = doc(db,"users",email);
+  await setDoc(userRef, {role:"student"});
+  alert(email+" 已移除教師權限");
+}
+
 onAuthStateChanged(auth, async user=>{
   if(user){
     document.getElementById("login-section").style.display="none";
     document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
     
+    isAdmin = (user.email==="chianghansen0302@gmail.com");
+    if(isAdmin) document.getElementById("admin-panel").style.display="block";
+
     const userRef = doc(db,"users",user.email);
-    const userDoc = await getDocs(collection(db,"users"));
-    const teacherEmails = ["chianghansen0302@gmail.com","1130404@gm.khjh.hc.edu.tw"];
-    if(teacherEmails.includes(user.email)) role="teacher";
-    else role="student";
-    
+    const userDoc = await getDoc(userRef);
+    if(!userDoc.exists()){
+      await setDoc(userRef,{role:"student"});
+      role = "student";
+    } else { role = userDoc.data().role; }
+
     const q = query(collection(db,"notes"));
     onSnapshot(q,renderNotes);
   }
@@ -271,6 +301,8 @@ window.deleteNote = deleteNote;
 window.handleEnter = handleEnter;
 window.previewImage = previewImage;
 window.previewInlineImage = previewInlineImage;
+window.addTeacher = addTeacher;
+window.removeTeacher = removeTeacher;
 </script>
 </body>
 </html>
