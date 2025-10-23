@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（含最高權限）</title>
+<title>聯絡簿系統（多連結＋自動超連結）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 30px; }
@@ -18,6 +18,7 @@ input[type=file] { margin-top: 5px; }
 small { color: gray; display: block; margin-top: 5px; }
 hr { margin: 25px 0; border: 0.5px solid #ccc; }
 a { color: #4285F4; word-break: break-all; }
+.link-div { margin-top:4px; }
 </style>
 </head>
 <body>
@@ -35,9 +36,9 @@ a { color: #4285F4; word-break: break-all; }
   <div id="teacher-panel" style="display:none;">
     <h3>✏️ 老師寫聯絡簿</h3>
     <textarea id="note" placeholder="輸入聯絡簿內容..." onkeydown="handleEnter(event)"></textarea><br>
-    <input type="url" id="linkInput" placeholder="輸入超連結 (https://...)"><br>
+    <input type="url" id="linkInput" placeholder="新增超連結 (https://...)"><br>
     <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
-    <img id="preview"><br>
+    <img id="preview" style="display:none"><br>
     <button onclick="addNote()">送出</button>
   </div>
 
@@ -110,6 +111,13 @@ function previewImage(event){
   } else { preview.src=""; preview.style.display="none"; }
 }
 
+// 將文字自動轉超連結
+function linkify(text){
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  return text.replace(urlPattern, "<a href='$1' target='_blank'>$1</a>");
+}
+
+// 新增筆記
 async function addNote(update=false, docId=null, div=null){
   const content = document.getElementById("note").value.trim();
   const link = document.getElementById("linkInput").value.trim() || null;
@@ -131,23 +139,23 @@ async function addNote(update=false, docId=null, div=null){
       email: div.dataset.email,
       content: text,
       imageUrl: div.dataset.newImage || div.dataset.image || imageUrl || null,
-      link: div.dataset.newLink || div.dataset.link || link,
+      links: div.dataset.links ? JSON.parse(div.dataset.links) : (link?[link]:[]),
       time: new Date().toLocaleString()
     });
     div.dataset.image = div.dataset.newImage || div.dataset.image || imageUrl || null;
-    div.dataset.link = div.dataset.newLink || div.dataset.link || link;
     div.dataset.newImage = "";
-    div.dataset.newLink = "";
   } else {
+    const newLinks = link ? [link] : [];
     await addDoc(collection(db,"notes"),{
       author: auth.currentUser.displayName,
       email: auth.currentUser.email,
       content: content,
       imageUrl: imageUrl,
-      link: link,
+      links: newLinks,
       time: new Date().toLocaleString()
     });
 
+    // 保留最近10筆
     const notesSnapshot = await getDocs(collection(db,"notes"));
     const docs = notesSnapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
     if(docs.length>10){
@@ -163,100 +171,7 @@ async function addNote(update=false, docId=null, div=null){
   document.getElementById("preview").style.display="none";
 }
 
-async function saveEdit(docId, div){
-  await addOrUpdateImage(div);
-  await addOrUpdateLink(div);
-  const text = div.innerText;
-  await setDoc(doc(db,"notes",docId),{
-    author: div.dataset.author,
-    email: div.dataset.email,
-    content: text,
-    imageUrl: div.dataset.image || null,
-    link: div.dataset.link || null,
-    time: new Date().toLocaleString()
-  });
-}
-
-async function addOrUpdateImage(div){
-  if(div.fileInput && div.fileInput.files.length>0){
-    const file = div.fileInput.files[0];
-    const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef,file);
-    const url = await getDownloadURL(storageRef);
-    div.dataset.newImage = url;
-    div.dataset.image = url;
-  }
-}
-
-async function addOrUpdateLink(div){
-  if(div.linkInput && div.linkInput.value){
-    div.dataset.newLink = div.linkInput.value;
-    div.dataset.link = div.linkInput.value;
-  }
-}
-
-async function deleteNote(docId){
-  if(confirm("確定要刪除此筆記嗎？")) await deleteDoc(doc(db,"notes",docId));
-}
-
-function renderNotes(snapshot){
-  const messagesEl = document.getElementById("messages");
-  const historyEl = document.getElementById("history");
-  messagesEl.innerHTML="";
-  historyEl.innerHTML="";
-
-  const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time)- new Date(a.data().time));
-  let first=true;
-  docs.forEach(doc=>{
-    const data = doc.data();
-    const divId = `note_${doc.id}`;
-    let contentEditable = role==="teacher"? "contenteditable='true'" : "";
-    let contentHTML = (data.content||"").replace(/\n/g,"<br>");
-
-    let html = `<div class='note'>
-      <b>${data.author}</b>（${data.email}）<br>
-      <div id='${divId}' class='editable' ${contentEditable} 
-           data-author='${data.author}' data-email='${data.email}' 
-           data-image='${data.imageUrl||""}' data-link='${data.link||""}'>${contentHTML}</div>`;
-
-    if(data.link) html += `<br><a href='${data.link}' target='_blank'>${data.link}</a>`;
-    if(data.imageUrl) html += `<br><img src='${data.imageUrl}' class='note-img'>`;
-
-    if(role==="teacher"){
-      html+=`<input type='file' id='file_${doc.id}' onchange='previewInlineImage(event,"${doc.id}")'><br>
-             <input type='url' placeholder='編輯連結' id='link_${doc.id}' value='${data.link||""}' 
-             oninput='document.getElementById("${divId}").dataset.newLink=this.value'><br>
-             <button onclick='saveEdit("${doc.id}",document.getElementById("${divId}"))'>更新</button>
-             <button onclick='deleteNote("${doc.id}")'>刪除</button>`;
-    }
-
-    html+=`<small>${data.time}</small></div>`;
-    if(first){ messagesEl.innerHTML += html; first=false; }
-    else historyEl.innerHTML += html;
-  });
-}
-
-function previewInlineImage(event,id){
-  const file = event.target.files[0];
-  if(file){
-    const reader = new FileReader();
-    reader.onload = e=>{
-      const div = document.getElementById(`note_${id}`);
-      div.dataset.newImage = "";
-      const existingImg = div.querySelector("img");
-      if(existingImg) existingImg.src = e.target.result;
-      else {
-        const img = document.createElement("img");
-        img.src = e.target.result;
-        img.className = "note-img";
-        div.appendChild(img);
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-}
-
-// 最高權限功能
+// 最高權限教師管理
 async function addTeacher(){
   const email = document.getElementById("newTeacherEmail").value.trim();
   if(!email) return alert("請輸入Email");
@@ -272,37 +187,110 @@ async function removeTeacher(){
   alert(email+" 已移除教師權限");
 }
 
-onAuthStateChanged(auth, async user=>{
+// 刪除筆記
+async function deleteNote(docId){
+  if(confirm("確定要刪除此筆記嗎？")) await deleteDoc(doc(db,"notes",docId));
+}
+
+// 新增/編輯/刪除多連結
+async function addLink(docId){
+  const input = document.getElementById(`newLink_${docId}`);
+  const url = input.value.trim();
+  if(!url) return alert("請輸入連結");
+  
+  const noteRef = doc(db,"notes",docId);
+  const noteSnap = await getDoc(noteRef);
+  const data = noteSnap.data();
+  const links = data.links || [];
+  links.push(url);
+  await setDoc(noteRef,{...data, links: links});
+  input.value="";
+}
+
+async function deleteLink(docId,index){
+  if(!confirm("確定要刪除此連結嗎？")) return;
+  const noteRef = doc(db,"notes",docId);
+  const noteSnap = await getDoc(noteRef);
+  const data = noteSnap.data();
+  const links = data.links || [];
+  links.splice(index,1);
+  await setDoc(noteRef,{...data, links: links});
+}
+
+async function editLink(docId,index){
+  const newUrl = prompt("編輯連結", "");
+  if(!newUrl) return;
+  const noteRef = doc(db,"notes",docId);
+  const noteSnap = await getDoc(noteRef);
+  const data = noteSnap.data();
+  const links = data.links || [];
+  links[index] = newUrl;
+  await setDoc(noteRef,{...data, links: links});
+}
+
+// 監聽登入狀態
+onAuthStateChanged(auth, async (user)=>{
   if(user){
     document.getElementById("login-section").style.display="none";
     document.getElementById("app").style.display="block";
-    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-    
-    isAdmin = (user.email==="chianghansen0302@gmail.com");
-    if(isAdmin) document.getElementById("admin-panel").style.display="block";
+    document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
 
+    // 取得角色
     const userRef = doc(db,"users",user.email);
-    const userDoc = await getDoc(userRef);
-    if(!userDoc.exists()){
-      await setDoc(userRef,{role:"student"});
+    const userSnap = await getDoc(userRef);
+    if(!userSnap.exists()){
+      await setDoc(userRef, {role:"student"});
       role = "student";
-    } else { role = userDoc.data().role; }
+    } else role = userSnap.data().role;
 
+    // 老師顯示面板
+    if(role==="teacher") document.getElementById("teacher-panel").style.display="block";
+    // 最高權限
+    if(user.email==="chianghansen0302@gmail.com"){ document.getElementById("admin-panel").style.display="block"; isAdmin=true; }
+
+    // 監聽筆記
     const q = query(collection(db,"notes"));
-    onSnapshot(q,renderNotes);
+    onSnapshot(q,snapshot=>{
+      const messages = snapshot.docs.sort((a,b)=>new Date(b.data().time)-new Date(a.data().time));
+      let html = "", histHtml="";
+      messages.forEach(doc=>{
+        const data = doc.data();
+        const linksHTML = (data.links||[]).map((l,i)=>{
+          return `<div class='link-div'>
+                    <a href='${l}' target='_blank'>${l}</a>
+                    ${role==="teacher"?`<button onclick='editLink("${doc.id}",${i})'>編輯</button>
+                    <button onclick='deleteLink("${doc.id}",${i})'>刪除</button>`:""}
+                  </div>`;
+        }).join("");
+
+        const imageHTML = data.imageUrl ? `<img src='${data.imageUrl}'>` : "";
+
+        const noteDiv = `<div class='note' data-author='${data.author}' data-email='${data.email}' data-image='${data.imageUrl||""}' data-links='${JSON.stringify(data.links||[])}'>
+            <div class='editable' contenteditable='${role==="teacher"}'>${linkify(data.content).replace(/\n/g,"<br>")}</div>
+            ${imageHTML}
+            ${linksHTML}
+            <small>${data.author} | ${data.time}</small>
+            ${role==="teacher"?`<button onclick='deleteNote("${doc.id}")'>刪除筆記</button>`:""}
+          </div>`;
+
+        html += noteDiv;
+        histHtml += noteDiv;
+      });
+      document.getElementById("messages").innerHTML = html;
+      document.getElementById("history").innerHTML = histHtml;
+    });
+
   }
 });
 
 window.googleLogin = googleLogin;
 window.logout = logout;
 window.addNote = addNote;
-window.saveEdit = saveEdit;
-window.deleteNote = deleteNote;
-window.handleEnter = handleEnter;
-window.previewImage = previewImage;
-window.previewInlineImage = previewInlineImage;
 window.addTeacher = addTeacher;
 window.removeTeacher = removeTeacher;
+window.addLink = addLink;
+window.deleteLink = deleteLink;
+window.editLink = editLink;
 </script>
 </body>
 </html>
