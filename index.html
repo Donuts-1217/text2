@@ -23,7 +23,7 @@
   <h1>📘 聯絡簿系統</h1>
 
   <div id="login-section">
-    <button onclick="googleLogin(); console.log('登入按鈕被點擊');">使用 Google 登入</button>
+    <button onclick="googleLogin();">使用 Google 登入</button>
   </div>
 
   <div id="app" style="display:none;">
@@ -35,7 +35,7 @@
       <textarea id="note" placeholder="輸入聯絡簿內容..."></textarea><br>
       <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)"><br>
       <img id="preview"><br>
-      <button onclick="addNote()">送出</button>
+      <button id="addButton" onclick="addNote()">送出</button>
     </div>
 
     <div id="student-panel">
@@ -55,7 +55,7 @@
       getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { 
-      getFirestore, collection, addDoc, doc, getDoc, setDoc, query, orderBy, onSnapshot, getDocs, deleteDoc 
+      getFirestore, collection, addDoc, doc, getDoc, setDoc, query, onSnapshot, getDocs, deleteDoc 
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
     import { 
       getStorage, ref, uploadBytes, getDownloadURL 
@@ -76,6 +76,9 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
+
+    let latestDocId = null;
+    let role = "student";
 
     async function googleLogin() {
       try { await signInWithPopup(auth, provider); } 
@@ -103,7 +106,7 @@
       }
     }
 
-    async function addNote() {
+    async function addNote(update=false) {
       const content = document.getElementById("note").value.trim();
       const fileInput = document.getElementById("imageInput");
       if (!content && !fileInput.files.length) return alert("請輸入內容或選擇圖片！");
@@ -116,49 +119,92 @@
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      await addDoc(collection(db, "notes"), {
-        author: auth.currentUser.displayName,
-        email: auth.currentUser.email,
-        content: content,
-        imageUrl: imageUrl,
-        time: new Date().toLocaleString()
-      });
+      if (update && latestDocId) {
+        await setDoc(doc(db, "notes", latestDocId), {
+          author: auth.currentUser.displayName,
+          email: auth.currentUser.email,
+          content: content,
+          imageUrl: imageUrl,
+          time: new Date().toLocaleString()
+        });
+        latestDocId = null;
+        document.getElementById("addButton").innerText = "送出";
+      } else {
+        const docRef = await addDoc(collection(db, "notes"), {
+          author: auth.currentUser.displayName,
+          email: auth.currentUser.email,
+          content: content,
+          imageUrl: imageUrl,
+          time: new Date().toLocaleString()
+        });
+        latestDocId = docRef.id;
+
+        // 保留最新 10 筆
+        const notesSnapshot = await getDocs(collection(db, "notes"));
+        const docs = notesSnapshot.docs.sort((a,b)=> new Date(b.data().time) - new Date(a.data().time));
+        if(docs.length>10){
+          for(let i=10;i<docs.length;i++){
+            await deleteDoc(doc(db,"notes",docs[i].id));
+          }
+        }
+      }
 
       document.getElementById("note").value = "";
       fileInput.value = "";
       document.getElementById("preview").style.display = "none";
+    }
 
-      // 🔹 保留最新 10 筆
-      const notesSnapshot = await getDocs(collection(db, "notes"));
-      const docs = notesSnapshot.docs.sort((a, b) => new Date(b.data().time) - new Date(a.data().time));
-      if (docs.length > 10) {
-        for (let i = 10; i < docs.length; i++) {
-          await deleteDoc(doc(db, "notes", docs[i].id));
-        }
+    function enableEdit(docId, data){
+      latestDocId = docId;
+      document.getElementById("note").value = data.content || "";
+      if(data.imageUrl){
+        document.getElementById("preview").src = data.imageUrl;
+        document.getElementById("preview").style.display = "block";
+      } else {
+        document.getElementById("preview").style.display = "none";
+      }
+      document.getElementById("addButton").innerText = "更新";
+    }
+
+    async function deleteNote(docId){
+      if(confirm("確定要刪除此歷史紀錄嗎？")){
+        await deleteDoc(doc(db,"notes",docId));
       }
     }
 
-    function renderNotes(snapshot) {
+    function renderNotes(snapshot){
       const messagesEl = document.getElementById("messages");
       const historyEl = document.getElementById("history");
       messagesEl.innerHTML = "";
       historyEl.innerHTML = "";
 
+      const docs = snapshot.docs.sort((a,b)=> new Date(b.data().time) - new Date(a.data().time));
       let first = true;
-      snapshot.docs.sort((a,b) => new Date(b.data().time) - new Date(a.data().time))
-        .forEach(doc => {
-          const data = doc.data();
-          let html = `<div class='note'><b>${data.author}</b>（${data.email}）<br>`;
-          if (data.content) html += `${data.content}<br>`;
-          if (data.imageUrl) html += `<img src="${data.imageUrl}"><br>`;
-          html += `<small>${data.time}</small></div>`;
-          if (first) { messagesEl.innerHTML = html; first = false; } 
-          else { historyEl.innerHTML += html; }
-        });
+      docs.forEach(doc => {
+        const data = doc.data();
+        let html = `<div class='note'><b>${data.author}</b>（${data.email}）<br>`;
+        if(data.content) html += `${data.content}<br>`;
+        if(data.imageUrl) html += `<img src="${data.imageUrl}"><br>`;
+        html += `<small>${data.time}</small></div>`;
+
+        if(first){
+          messagesEl.innerHTML = html;
+          if(role==="teacher"){
+            messagesEl.innerHTML += `<button onclick='enableEdit("${doc.id}", ${JSON.stringify(data)})'>編輯</button>`;
+          }
+          first = false;
+        } else {
+          let deleteBtn = '';
+          if(role==="teacher"){
+            deleteBtn = `<button onclick='deleteNote("${doc.id}")'>刪除</button>`;
+          }
+          historyEl.innerHTML = `<div class='note'>${html}${deleteBtn}</div>` + historyEl.innerHTML;
+        }
+      });
     }
 
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
+    onAuthStateChanged(auth, async (user)=>{
+      if(user){
         document.getElementById("login-section").style.display = "none";
         document.getElementById("app").style.display = "block";
         document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
@@ -166,26 +212,21 @@
         const userRef = doc(db, "users", user.email);
         const userDoc = await getDoc(userRef);
 
-        let role = "student";
-        const teacherEmails = [
-          "chianghansen0302@gmail.com",
-          "1130404@gm.khjh.hc.edu.tw"
-        ];
-
-        if (teacherEmails.includes(user.email)) {
-          role = "teacher";
-        } else if (!userDoc.exists()) {
-          await setDoc(userRef, { role: "student" });
+        const teacherEmails = ["chianghansen0302@gmail.com","1130404@gm.khjh.hc.edu.tw"];
+        if(teacherEmails.includes(user.email)){
+          role="teacher";
+        } else if(!userDoc.exists()){
+          await setDoc(userRef,{role:"student"});
+          role="student";
         } else {
           role = userDoc.data().role;
         }
 
-        if (role === "teacher") {
+        if(role==="teacher"){
           document.getElementById("teacher-panel").style.display = "block";
         }
 
-        // 🔹 即時同步監聽（只抓最新 10 筆）
-        const notesQuery = query(collection(db, "notes"));
+        const notesQuery = query(collection(db,"notes"));
         onSnapshot(notesQuery, renderNotes);
 
       } else {
@@ -197,6 +238,8 @@
     window.logout = logout;
     window.addNote = addNote;
     window.previewImage = previewImage;
+    window.enableEdit = enableEdit;
+    window.deleteNote = deleteNote;
   </script>
 </body>
 </html>
