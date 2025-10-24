@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>📘 聯絡簿系統（Google 登入＋換行＋自動調整高度）</title>
+<title>📘 聯絡簿系統（含三身分＋自動超連結）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
@@ -18,11 +18,13 @@ textarea {
 .reply { background: #f7f7f7; padding: 6px 10px; border-radius: 8px; margin-top: 6px; margin-left: 12px; }
 small { color: gray; }
 .section-title { margin-top:20px; font-size:18px; font-weight:bold; color:#2c3e50; }
+a { color: #1a73e8; text-decoration: none; }
+a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
-<h1>📘 聯絡簿系統（Google 登入版）</h1>
+<h1>📘 聯絡簿系統（含管理員、老師、學生）</h1>
 
 <div id="login-section">
   <button onclick="googleLogin()">使用 Google 登入</button>
@@ -33,15 +35,18 @@ small { color: gray; }
   <button onclick="logout()">登出</button>
 
   <div id="teacher-panel" style="display:none;">
-    <h3>✏️ 老師寫聯絡簿</h3>
+    <h3>✏️ 寫聯絡簿</h3>
     <textarea id="note" placeholder="輸入內容（Shift+Enter換行）"></textarea><br>
     <button onclick="addNote()">送出</button>
+  </div>
 
-    <h3>👥 角色管理</h3>
+  <div id="admin-panel" style="display:none;">
+    <h3>👑 管理使用者角色</h3>
     <input type="email" id="role-email" placeholder="輸入使用者 Email">
     <select id="role-select">
       <option value="student">學生</option>
       <option value="teacher">老師</option>
+      <option value="admin">管理員</option>
     </select>
     <button onclick="setUserRole()">設定角色</button>
   </div>
@@ -57,9 +62,9 @@ small { color: gray; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, setDoc, doc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-// ✅ 你的 Firebase 設定
+// ✅ Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
   authDomain: "text-585a6.firebaseapp.com",
@@ -82,7 +87,7 @@ let currentUserRole = "student";
 async function googleLogin() { try { await signInWithPopup(auth, provider); } catch(e){ alert("登入失敗："+e.message);} }
 async function logout(){ await signOut(auth); location.reload();}
 
-// 🔹 老師新增聯絡簿
+// 🔹 新增聯絡簿
 async function addNote(){
   const content = document.getElementById("note").value.trim();
   if(!content) return alert("請輸入內容！");
@@ -94,6 +99,18 @@ async function addNote(){
     replies: []
   });
   document.getElementById("note").value = "";
+}
+
+// 🔹 將文字自動轉為可點連結與換行
+function linkify(text) {
+  return text
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>")
+    .replace(
+      /(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank">$1</a>'
+    );
 }
 
 // 🔹 編輯、刪除、回覆
@@ -119,7 +136,7 @@ async function replyNote(id){
   await updateDoc(noteRef,{replies});
 }
 
-// 🔹 設定角色
+// 🔹 設定角色（只有管理員能用）
 async function setUserRole(){
   const email = document.getElementById("role-email").value.trim();
   const role = document.getElementById("role-select").value;
@@ -128,21 +145,21 @@ async function setUserRole(){
   alert(`${email} 已設為 ${role}`);
 }
 
-// 🔹 顯示筆記（含換行）
+// 🔹 顯示筆記
 function renderNote(data, id){
   let actions = "";
-  if(data.email===currentUser.email || currentUserRole==="teacher"){
+  if(data.email===currentUser.email || currentUserRole==="teacher" || currentUserRole==="admin"){
     actions = `<button onclick="editNote('${id}','${data.content.replace(/'/g,"\\'")}')">編輯</button>
                <button onclick="deleteNote('${id}')">刪除</button>`;
   }
 
   const timeStr = data.time.toDate ? data.time.toDate().toLocaleString() : data.time;
-  const formattedContent = data.content.replace(/\n/g, "<br>");
+  const formattedContent = linkify(data.content);
 
   let repliesHtml = "";
   if(data.replies && data.replies.length>0){
     data.replies.forEach(r=>{
-      const replyText = r.content.replace(/\n/g, "<br>");
+      const replyText = linkify(r.content);
       repliesHtml += `<div class="reply"><b>${r.author}</b> (${r.email}): ${replyText}<br><small>${r.time}</small></div>`;
     });
   }
@@ -169,14 +186,30 @@ onAuthStateChanged(auth, async(user)=>{
 
     const userRef = doc(db,"users",user.email);
     const userDoc = await getDoc(userRef);
+
+    // 第一次登入 → 預設為學生
     if(!userDoc.exists()){ 
       await setDoc(userRef,{role:"student"}); 
       currentUserRole="student";
     } else {
       currentUserRole = userDoc.data().role;
     }
-    if(currentUserRole==="teacher") document.getElementById("teacher-panel").style.display="block";
 
+    // ✅ 指定帳號是管理員
+    if(user.email === "chianghansen0302@gmail.com"){
+      currentUserRole = "admin";
+      await setDoc(userRef,{role:"admin"});
+    }
+
+    // 顯示對應功能
+    if(currentUserRole==="teacher" || currentUserRole==="admin"){
+      document.getElementById("teacher-panel").style.display="block";
+    }
+    if(currentUserRole==="admin"){
+      document.getElementById("admin-panel").style.display="block";
+    }
+
+    // 顯示筆記
     const notesQuery = query(collection(db,"notes"),orderBy("time","desc"));
     onSnapshot(notesQuery,snapshot=>{
       const latestEl=document.getElementById("latest");
