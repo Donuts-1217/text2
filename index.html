@@ -2,14 +2,17 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿系統（歷史7筆版）</title>
+<title>📘 聯絡簿系統（Google 登入＋換行＋自動調整高度）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
 h1 { color: #2c3e50; }
 button { padding: 6px 12px; margin: 2px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
 button:hover { background: #3367D6; }
-textarea { width: 80%; max-width: 420px; height: 60px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
+textarea { 
+  width: 80%; max-width: 420px; min-height: 60px; resize: none;
+  border-radius: 6px; border: 1px solid #ccc; padding: 8px; line-height: 1.4;
+}
 #latest, #history { margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
 .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
 .reply { background: #f7f7f7; padding: 6px 10px; border-radius: 8px; margin-top: 6px; margin-left: 12px; }
@@ -19,7 +22,7 @@ small { color: gray; }
 </head>
 <body>
 
-<h1>📘 聯絡簿系統（互動歷史7筆版）</h1>
+<h1>📘 聯絡簿系統（Google 登入版）</h1>
 
 <div id="login-section">
   <button onclick="googleLogin()">使用 Google 登入</button>
@@ -30,9 +33,10 @@ small { color: gray; }
   <button onclick="logout()">登出</button>
 
   <div id="teacher-panel" style="display:none;">
-    <h3>✏️ 寫聯絡簿</h3>
-    <textarea id="note" placeholder="輸入內容..."></textarea><br>
+    <h3>✏️ 老師寫聯絡簿</h3>
+    <textarea id="note" placeholder="輸入內容（Shift+Enter換行）"></textarea><br>
     <button onclick="addNote()">送出</button>
+
     <h3>👥 角色管理</h3>
     <input type="email" id="role-email" placeholder="輸入使用者 Email">
     <select id="role-select">
@@ -43,10 +47,9 @@ small { color: gray; }
   </div>
 
   <div id="student-panel">
-    <button onclick="exportNotes()">⬇️ 導出聯絡簿（純文字）</button>
     <div class="section-title">📌 最新聯絡簿</div>
     <div id="latest"></div>
-    <div class="section-title">📜 聯絡簿歷史紀錄（只顯示最新7筆）</div>
+    <div class="section-title">📜 歷史紀錄（最新7筆）</div>
     <div id="history"></div>
   </div>
 </div>
@@ -54,8 +57,9 @@ small { color: gray; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
+// ✅ 你的 Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
   authDomain: "text-585a6.firebaseapp.com",
@@ -74,53 +78,57 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 let currentUserRole = "student";
 
+// 🔹 Google 登入 / 登出
 async function googleLogin() { try { await signInWithPopup(auth, provider); } catch(e){ alert("登入失敗："+e.message);} }
 async function logout(){ await signOut(auth); location.reload();}
+
+// 🔹 老師新增聯絡簿
 async function addNote(){
-  const content=document.getElementById("note").value.trim();
-  if(!content)return alert("請輸入內容！");
-  await addDoc(collection(db,"notes"),{author:currentUser.displayName,email:currentUser.email,content:content,time:new Date().toLocaleString(),replies:[]});
-  document.getElementById("note").value="";
-}
-async function editNote(id, oldContent){
-  const newContent=prompt("編輯內容：", oldContent);
-  if(newContent!==null){ await updateDoc(doc(db,"notes",id),{content:newContent}); }
-}
-async function deleteNote(id){ if(confirm("確定要刪除這筆筆記？")) await deleteDoc(doc(db,"notes",id)); }
-async function setUserRole(){
-  const email=document.getElementById("role-email").value.trim();
-  const role=document.getElementById("role-select").value;
-  if(!email)return alert("請輸入 Email");
-  await setDoc(doc(db,"users",email),{role:role});
-  alert(`${email} 已設為 ${role}`);
-}
-async function exportNotes(){
-  const snapshot=await getDocs(collection(db,"notes"));
-  let text="";
-  snapshot.forEach(doc=>{
-    const data=doc.data();
-    text+=`${data.time} | ${data.author} (${data.email})\n${data.content}\n`;
-    if(data.replies) data.replies.forEach(r=>{ text+=`  └ ${r.author} (${r.email}): ${r.content} [${r.time}]\n`; });
-    text+="\n";
+  const content = document.getElementById("note").value.trim();
+  if(!content) return alert("請輸入內容！");
+  await addDoc(collection(db,"notes"),{
+    author: currentUser.displayName,
+    email: currentUser.email,
+    content: content,
+    time: Timestamp.now(),
+    replies: []
   });
-  const blob=new Blob([text],{type:"text/plain"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a"); a.href=url; a.download="聯絡簿.txt"; a.click();
-  URL.revokeObjectURL(url);
-}
-async function replyNote(id){
-  const content=prompt("輸入回覆內容：");
-  if(!content) return;
-  const noteRef=doc(db,"notes",id);
-  const noteDoc=await getDoc(noteRef);
-  const data=noteDoc.data();
-  const newReply={author:currentUser.displayName,email:currentUser.email,content:content,time:new Date().toLocaleString()};
-  const replies=data.replies||[];
-  replies.push(newReply);
-  await updateDoc(noteRef,{replies:replies});
+  document.getElementById("note").value = "";
 }
 
-// 顯示筆記
+// 🔹 編輯、刪除、回覆
+async function editNote(id, oldContent){
+  const newContent = prompt("編輯內容：", oldContent);
+  if(newContent!==null){ await updateDoc(doc(db,"notes",id),{content:newContent}); }
+}
+async function deleteNote(id){ if(confirm("確定要刪除？")) await deleteDoc(doc(db,"notes",id)); }
+async function replyNote(id){
+  const content = prompt("輸入回覆內容：");
+  if(!content) return;
+  const noteRef = doc(db,"notes",id);
+  const noteDoc = await getDoc(noteRef);
+  const data = noteDoc.data();
+  const newReply = {
+    author: currentUser.displayName,
+    email: currentUser.email,
+    content: content,
+    time: new Date().toLocaleString()
+  };
+  const replies = data.replies || [];
+  replies.push(newReply);
+  await updateDoc(noteRef,{replies});
+}
+
+// 🔹 設定角色
+async function setUserRole(){
+  const email = document.getElementById("role-email").value.trim();
+  const role = document.getElementById("role-select").value;
+  if(!email) return alert("請輸入 Email");
+  await setDoc(doc(db,"users",email),{role});
+  alert(`${email} 已設為 ${role}`);
+}
+
+// 🔹 顯示筆記（含換行）
 function renderNote(data, id){
   let actions = "";
   if(data.email===currentUser.email || currentUserRole==="teacher"){
@@ -128,18 +136,22 @@ function renderNote(data, id){
                <button onclick="deleteNote('${id}')">刪除</button>`;
   }
 
+  const timeStr = data.time.toDate ? data.time.toDate().toLocaleString() : data.time;
+  const formattedContent = data.content.replace(/\n/g, "<br>");
+
   let repliesHtml = "";
   if(data.replies && data.replies.length>0){
     data.replies.forEach(r=>{
-      repliesHtml += `<div class="reply"><b>${r.author}</b> (${r.email}): ${r.content}<br><small>${r.time}</small></div>`;
+      const replyText = r.content.replace(/\n/g, "<br>");
+      repliesHtml += `<div class="reply"><b>${r.author}</b> (${r.email}): ${replyText}<br><small>${r.time}</small></div>`;
     });
   }
 
   return `
     <div class="note">
       <b>${data.author}</b> (${data.email})<br>
-      ${data.content}<br>
-      <small>${data.time}</small><br>
+      ${formattedContent}<br>
+      <small>${timeStr}</small><br>
       ${actions}
       <button onclick="replyNote('${id}')">回覆</button>
       ${repliesHtml}
@@ -147,25 +159,25 @@ function renderNote(data, id){
   `;
 }
 
-// 監聽登入狀態
+// 🔹 登入監聽
 onAuthStateChanged(auth, async(user)=>{
   if(user){
-    currentUser=user;
+    currentUser = user;
     document.getElementById("login-section").style.display="none";
     document.getElementById("app").style.display="block";
     document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
 
-    const userRef=doc(db,"users",user.email);
-    const userDoc=await getDoc(userRef);
+    const userRef = doc(db,"users",user.email);
+    const userDoc = await getDoc(userRef);
     if(!userDoc.exists()){ 
       await setDoc(userRef,{role:"student"}); 
       currentUserRole="student";
     } else {
-      currentUserRole=userDoc.data().role;
+      currentUserRole = userDoc.data().role;
     }
     if(currentUserRole==="teacher") document.getElementById("teacher-panel").style.display="block";
 
-    const notesQuery=query(collection(db,"notes"),orderBy("time","desc"));
+    const notesQuery = query(collection(db,"notes"),orderBy("time","desc"));
     onSnapshot(notesQuery,snapshot=>{
       const latestEl=document.getElementById("latest");
       const historyEl=document.getElementById("history");
@@ -176,21 +188,26 @@ onAuthStateChanged(auth, async(user)=>{
         historyEl.innerHTML += renderNote(docs[i].data(), docs[i].id);
       }
     });
-
   } else {
     console.log("尚未登入");
   }
 });
 
-// 全域
+// 🔹 文字框自動調整高度
+const noteBox = document.getElementById("note");
+noteBox?.addEventListener("input", () => {
+  noteBox.style.height = "auto";
+  noteBox.style.height = noteBox.scrollHeight + "px";
+});
+
+// 🔹 全域函式掛載
 window.googleLogin=googleLogin;
 window.logout=logout;
 window.addNote=addNote;
 window.editNote=editNote;
 window.deleteNote=deleteNote;
-window.setUserRole=setUserRole;
-window.exportNotes=exportNotes;
 window.replyNote=replyNote;
+window.setUserRole=setUserRole;
 </script>
 </body>
 </html>
