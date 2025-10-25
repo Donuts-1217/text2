@@ -103,7 +103,8 @@ onAuthStateChanged(auth, async(user)=>{
     else currentUserRole=userDoc.data().role;
     if(user.email==="chianghansen0302@gmail.com"){ currentUserRole="admin"; await setDoc(userRef,{role:"admin"}); }
 
-    const chatQuery=query(collection(db,"chat"),orderBy("time","asc"));
+    const chatQuery = query(collection(db, "chats"), orderBy("time", "asc"));
+
     onSnapshot(chatQuery,(snapshot)=>{
       const chatBox=document.getElementById("chat-box");
       chatBox.innerHTML="";
