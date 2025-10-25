@@ -1,11 +1,64 @@
-<script type="module">
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>聯絡簿與聊天室系統</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
+h1 { color: #2c3e50; }
+button { padding: 6px 12px; margin: 2px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
+button:hover { background: #3367D6; }
+textarea { width: 80%; max-width: 420px; height: 60px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
+#latest, #history, #chat-box {
+  margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;
+}
+.note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+small { color: gray; }
+#chat-box { background: #fff; padding: 10px; border-radius: 10px; height: 300px; overflow-y: auto; }
+#chat-input { width: 80%; max-width: 420px; padding: 6px; border-radius: 6px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+
+<h1>📘 聯絡簿與聊天室系統</h1>
+
+<!-- 登入區 -->
+<div id="login-section">
+  <button onclick="googleLogin()">使用 Google 登入</button>
+</div>
+
+<!-- 主體 -->
+<div id="app" style="display:none;">
+  <p id="user-info"></p>
+  <button onclick="logout()">登出</button>
+
+  <!-- 老師/管理員區 -->
+  <div id="teacher-panel" style="display:none;">
+    <h3>✏️ 寫聯絡簿</h3>
+    <textarea id="note" placeholder="輸入內容 (Shift+Enter 換行)..."></textarea><br>
+    <button onclick="addNote()">送出</button>
+  </div>
+
+  <!-- 聯絡簿區 -->
+  <div id="notes-section">
+    <h3>📜 聯絡簿紀錄</h3>
+    <div id="notes"></div>
+  </div>
+
+  <!-- 聊天室 -->
+  <div id="chat-section">
+    <h3>💬 即時聊天室</h3>
+    <div id="chat-box"></div>
+    <textarea id="chat-input" placeholder="輸入訊息 (Shift+Enter 換行)..."></textarea><br>
+    <button onclick="sendMessage()">傳送</button>
+  </div>
+</div>
+
+<script type="module" defer>
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import {
-  getFirestore, collection, addDoc, setDoc, doc, getDoc, onSnapshot, query, orderBy
-} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, onSnapshot, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
 // ✅ Firebase 設定
 const firebaseConfig = {
@@ -27,8 +80,8 @@ let currentRole = "student";
 
 // 🔹 Google 登入
 async function googleLogin() {
-  try { await signInWithPopup(auth, provider); }
-  catch (e) { alert("登入失敗：" + e.message); }
+  try { await signInWithPopup(auth, provider); } 
+  catch (e) { alert("登入失敗："+e.message); }
 }
 
 // 🔹 登出
@@ -50,7 +103,8 @@ async function addNote() {
 // 🔹 顯示聯絡簿
 function renderNotes() {
   const notesEl = document.getElementById("notes");
-  onSnapshot(query(collection(db, "notes"), orderBy("time")), (snapshot) => {
+  const q = query(collection(db, "notes"), orderBy("time", "desc"));
+  onSnapshot(q, (snapshot) => {
     notesEl.innerHTML = "";
     snapshot.forEach((doc) => {
       const d = doc.data();
@@ -72,7 +126,7 @@ async function sendMessage() {
     name: currentUser.displayName,
     email: currentUser.email,
     role: currentRole,
-    message: text,
+    message: text.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
     time: new Date().toLocaleString()
   });
   input.value = "";
@@ -81,16 +135,14 @@ async function sendMessage() {
 // 🔹 顯示聊天室訊息（即時）
 function renderChat() {
   const chatBox = document.getElementById("chat-box");
-  const chatQuery = query(collection(db, "chat"), orderBy("time"));
-  onSnapshot(chatQuery, (snapshot) => {
+  const q = query(collection(db, "chat"), orderBy("time"));
+  onSnapshot(q, (snapshot) => {
     chatBox.innerHTML = "";
-    snapshot.forEach((doc) => {
-      const d = doc.data();
-      let msg = d.message.replace(/\n/g, "<br>")
-                         .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+    snapshot.forEach((docItem) => {
+      const d = docItem.data();
       chatBox.innerHTML += `
         <div>
-          <b>(${d.role}) ${d.name}</b>: ${msg}<br>
+          <b>(${d.role}) ${d.name}</b>: ${d.message}<br>
           <small>${d.time}</small>
         </div>`;
     });
@@ -100,10 +152,14 @@ function renderChat() {
 
 // 🔹 登入狀態監聽
 onAuthStateChanged(auth, async (user) => {
+  const loginSection = document.getElementById("login-section");
+  const appSection = document.getElementById("app");
+  if (!loginSection || !appSection) return;
+
   if (user) {
     currentUser = user;
-    document.getElementById("login-section").style.display = "none";
-    document.getElementById("app").style.display = "block";
+    loginSection.style.display = "none";
+    appSection.style.display = "block";
     document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
 
     const userRef = doc(db, "users", user.email);
@@ -131,3 +187,5 @@ window.logout = logout;
 window.addNote = addNote;
 window.sendMessage = sendMessage;
 </script>
+</body>
+</html>
