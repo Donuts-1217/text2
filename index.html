@@ -9,44 +9,64 @@ body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; 
 h1 { color: #2c3e50; }
 button { padding: 6px 12px; margin: 2px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
 button:hover { background: #3367D6; }
-textarea, input { width: 80%; max-width: 420px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
-#notes-section, #chat-box { margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
+textarea { width: 80%; max-width: 420px; height: 60px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
+#notes, #chat-box, #deleted-log {
+  margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;
+}
 .note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-.reply-box { background: #eef5ff; padding: 10px; border-radius: 8px; margin-top: 6px; }
 small { color: gray; }
-.hidden { display: none; }
+#chat-box { background: #fff; padding: 10px; border-radius: 10px; height: 300px; overflow-y: auto; }
+#chat-input { width: 80%; max-width: 420px; padding: 6px; border-radius: 6px; border: 1px solid #ccc; }
 </style>
 </head>
 <body>
 
 <h1>📘 聯絡簿與聊天室系統</h1>
 
+<!-- 登入區 -->
 <div id="login-section">
   <button onclick="googleLogin()">使用 Google 登入</button>
 </div>
 
+<!-- 主體 -->
 <div id="app" style="display:none;">
   <p id="user-info"></p>
   <button onclick="logout()">登出</button>
 
+  <!-- 老師/管理員區 -->
   <div id="teacher-panel" style="display:none;">
     <h3>✏️ 寫聯絡簿</h3>
     <textarea id="note" placeholder="輸入內容 (Shift+Enter 換行)..."></textarea><br>
     <button onclick="addNote()">送出</button>
   </div>
 
+  <!-- 聯絡簿區 -->
   <div id="notes-section">
     <h3>📜 聯絡簿紀錄</h3>
     <div id="notes"></div>
+  </div>
+
+  <!-- 聊天室 -->
+  <div id="chat-section">
+    <h3>💬 即時聊天室</h3>
+    <div id="chat-box"></div>
+    <textarea id="chat-input" placeholder="輸入訊息 (Shift+Enter 換行)..."></textarea><br>
+    <button onclick="sendMessage()">傳送</button>
+  </div>
+
+  <!-- 管理員專區 -->
+  <div id="admin-panel" style="display:none;">
+    <h3>🗑️ 已刪除紀錄</h3>
+    <div id="deleted-log"></div>
   </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, setDoc, doc, getDoc, onSnapshot, deleteDoc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, onSnapshot, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-// Firebase 設定
+// ✅ Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
   authDomain: "text-585a6.firebaseapp.com",
@@ -64,16 +84,16 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 let currentRole = "student";
 
-// Google 登入
+// 🔹 Google 登入
 async function googleLogin() {
   try { await signInWithPopup(auth, provider); } 
   catch (e) { alert("登入失敗："+e.message); }
 }
 
-// 登出
+// 🔹 登出
 async function logout() { await signOut(auth); location.reload(); }
 
-// 新增聯絡簿
+// 🔹 新增聯絡簿
 async function addNote() {
   const content = document.getElementById("note").value.trim();
   if (!content) return alert("請輸入內容！");
@@ -81,13 +101,34 @@ async function addNote() {
     author: currentUser.displayName,
     email: currentUser.email,
     content: content.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
-    reply: null,
     time: new Date().toLocaleString()
   });
   document.getElementById("note").value = "";
 }
 
-// 顯示聯絡簿
+// 🔹 刪除聯絡簿（老師 / 管理員）
+async function deleteNote(noteId) {
+  const noteDoc = await getDoc(doc(db, "notes", noteId));
+  if (!noteDoc.exists()) return alert("資料不存在");
+  const data = noteDoc.data();
+
+  if (!confirm("確定要刪除此聯絡簿嗎？")) return;
+
+  await addDoc(collection(db, "deleted_log"), {
+    deletedBy: currentUser.displayName,
+    role: currentRole,
+    deletedAt: new Date().toLocaleString(),
+    originalAuthor: data.author,
+    originalEmail: data.email,
+    originalContent: data.content,
+    originalTime: data.time
+  });
+
+  await deleteDoc(doc(db, "notes", noteId));
+  alert("已刪除！");
+}
+
+// 🔹 顯示聯絡簿
 function renderNotes() {
   const notesEl = document.getElementById("notes");
   const q = query(collection(db, "notes"), orderBy("time", "desc"));
@@ -95,71 +136,70 @@ function renderNotes() {
     notesEl.innerHTML = "";
     snapshot.forEach((docItem) => {
       const d = docItem.data();
-      // 學生只能看到自己的回覆
-      if (currentRole === "student" && d.reply && d.reply.target !== currentUser.email) return;
-
-      let buttons = "";
-      if (currentRole === "teacher" || currentRole === "admin") {
-        buttons = `
-          <button onclick="editNote('${docItem.id}', '${d.content.replace(/'/g, "\\'")}')">編輯</button>
-          <button onclick="deleteNote('${docItem.id}', '${d.content.replace(/'/g, "\\'")}')">刪除</button>
-          <button onclick="replyNote('${docItem.id}', '${d.email}')">回覆</button>`;
-      }
-
-      const replyHTML = d.reply ? `
-        <div class="reply-box">
-          <b>${d.reply.from}</b>：${d.reply.content}<br>
-          <small>${d.reply.time}</small>
-        </div>` : "";
-
+      const delBtn = (currentRole === "teacher" || currentRole === "admin")
+        ? `<br><button onclick="deleteNote('${docItem.id}')">刪除</button>`
+        : "";
       notesEl.innerHTML += `
         <div class="note">
-          <b>${d.author}</b> (${d.email})<br>
-          ${d.content}<br>
-          ${replyHTML}
-          <small>${d.time}</small><br>
-          ${buttons}
+          <b>${d.author}</b> (${d.email})<br>${d.content}<br>
+          <small>${d.time}</small>${delBtn}
         </div>`;
     });
   });
 }
 
-// 編輯
-async function editNote(id, oldContent) {
-  const newText = prompt("請輸入新的內容：", oldContent.replace(/<br>/g, "\n"));
-  if (newText !== null) {
-    await updateDoc(doc(db, "notes", id), {
-      content: newText.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>')
-    });
-  }
-}
-
-// 刪除
-async function deleteNote(id, content) {
-  if (!confirm("確定要刪除這則聯絡簿嗎？")) return;
-  await addDoc(collection(db, "deleted_log"), {
-    deletedBy: currentUser.displayName,
-    content,
+// 🔹 傳送聊天室訊息
+async function sendMessage() {
+  const input = document.getElementById("chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  await addDoc(collection(db, "chat"), {
+    name: currentUser.displayName,
+    email: currentUser.email,
+    role: currentRole,
+    message: text.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
     time: new Date().toLocaleString()
   });
-  await deleteDoc(doc(db, "notes", id));
+  input.value = "";
 }
 
-// 回覆（僅學生本人可見）
-async function replyNote(id, targetEmail) {
-  const text = prompt("請輸入回覆內容：");
-  if (!text) return;
-  await updateDoc(doc(db, "notes", id), {
-    reply: {
-      from: currentUser.displayName,
-      target: targetEmail,
-      content: text.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
-      time: new Date().toLocaleString()
-    }
+// 🔹 顯示聊天室訊息（即時）
+function renderChat() {
+  const chatBox = document.getElementById("chat-box");
+  const q = query(collection(db, "chat"), orderBy("time"));
+  onSnapshot(q, (snapshot) => {
+    chatBox.innerHTML = "";
+    snapshot.forEach((docItem) => {
+      const d = docItem.data();
+      chatBox.innerHTML += `
+        <div>
+          <b>(${d.role}) ${d.name}</b>: ${d.message}<br>
+          <small>${d.time}</small>
+        </div>`;
+    });
+    chatBox.scrollTop = chatBox.scrollHeight;
   });
 }
 
-// 登入狀態監聽
+// 🔹 顯示刪除紀錄（管理員）
+function renderDeletedLog() {
+  const logEl = document.getElementById("deleted-log");
+  const q = query(collection(db, "deleted_log"), orderBy("deletedAt", "desc"));
+  onSnapshot(q, (snapshot) => {
+    logEl.innerHTML = "";
+    snapshot.forEach((docItem) => {
+      const d = docItem.data();
+      logEl.innerHTML += `
+        <div class="note">
+          🗑️ <b>${d.deletedBy}</b> (${d.role}) 於 ${d.deletedAt} 刪除：<br>
+          <i>${d.originalAuthor}</i> - ${d.originalContent}<br>
+          <small>${d.originalTime}</small>
+        </div>`;
+    });
+  });
+}
+
+// 🔹 登入狀態監聽
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
   currentUser = user;
@@ -177,20 +217,33 @@ onAuthStateChanged(auth, async (user) => {
     currentRole = userDoc.data().role;
   }
 
-  if (currentRole === "teacher" || currentRole === "admin") {
+  if (currentRole === "teacher" || currentRole === "admin")
     document.getElementById("teacher-panel").style.display = "block";
+  if (currentRole === "admin") {
+    document.getElementById("admin-panel").style.display = "block";
+    renderDeletedLog();
   }
 
   renderNotes();
+  renderChat();
 });
 
-// 綁定全域
+// 🔹 Enter 送出、Shift+Enter 換行
+document.addEventListener("keydown", (e) => {
+  const chatInput = document.getElementById("chat-input");
+  if (document.activeElement === chatInput) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+});
+
 window.googleLogin = googleLogin;
 window.logout = logout;
 window.addNote = addNote;
-window.editNote = editNote;
+window.sendMessage = sendMessage;
 window.deleteNote = deleteNote;
-window.replyNote = replyNote;
 </script>
 </body>
 </html>
