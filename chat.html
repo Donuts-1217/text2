@@ -1,52 +1,137 @@
-<div id="chat-box" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;"></div>
-<input id="chat-input" placeholder="輸入訊息..." />
-<button id="send-btn">送出</button>
-
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-  import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+  import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
+  // ✅ 你的 Firebase 設定
   const firebaseConfig = {
-    apiKey: "你的 apiKey",
-    authDomain: "你的 authDomain",
-    projectId: "你的 projectId",
+    apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
+    authDomain: "text-585a6.firebaseapp.com",
+    projectId: "text-585a6",
+    storageBucket: "text-585a6.firebasestorage.app",
+    messagingSenderId: "789195223699",
+    appId: "1:789195223699:web:847902083fb646bda25366",
+    measurementId: "G-FL11M47EFP"
   };
-
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
 
-  const chatBox = document.getElementById("chat-box");
-  const chatInput = document.getElementById("chat-input");
-  const sendBtn = document.getElementById("send-btn");
+  // 🔹 Google 登入
+  async function googleLogin() {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      console.error(e);
+      alert("登入失敗！");
+    }
+  }
 
-  // 🔹 監聽訊息變化
-  const chatQuery = query(collection(db, "chat"), orderBy("time", "asc"));
-  onSnapshot(chatQuery, (snapshot) => {
-    chatBox.innerHTML = "";
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      const msg = document.createElement("div");
-      const date = data.time?.toDate().toLocaleString() || "";
-      msg.textContent = `[${data.role || "未知"}] ${data.name}: ${data.message} (${date})`;
-      chatBox.appendChild(msg);
+  // 🔹 登出
+  async function logout() {
+    await signOut(auth);
+    location.reload();
+  }
+
+  // 🔹 老師或管理員寫聯絡簿
+  async function addNote() {
+    const content = document.getElementById("note").value.trim();
+    if (!content) return alert("請輸入內容！");
+    await addDoc(collection(db, "notes"), {
+      author: auth.currentUser.displayName,
+      email: auth.currentUser.email,
+      content: content.replace(/\n/g, "<br>"),
+      time: new Date().toLocaleString()
     });
-    chatBox.scrollTop = chatBox.scrollHeight;
+    document.getElementById("note").value = "";
+    loadNotes();
+  }
+
+  // 🔹 載入聯絡簿
+  async function loadNotes() {
+    const querySnapshot = await getDocs(collection(db, "notes"));
+    const messagesEl = document.getElementById("messages");
+    messagesEl.innerHTML = "";
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      messagesEl.innerHTML += `
+        <div class='note'>
+          <b>${data.author}</b><br>
+          ${data.content}<br>
+          <small>${data.time}</small>
+        </div>`;
+    });
+  }
+
+  // 🔹 新增聊天室訊息
+  async function sendMessage() {
+    const input = document.getElementById("chat-input");
+    const text = input.value.trim();
+    if (!text) return;
+
+    await addDoc(collection(db, "chat"), {
+      name: auth.currentUser.displayName,
+      email: auth.currentUser.email,
+      role: window.userRole,
+      message: text,
+      time: new Date().toLocaleString()
+    });
+    input.value = "";
+  }
+
+  // 🔹 顯示聊天室訊息
+  function renderChat() {
+    const chatBox = document.getElementById("chat-box");
+    onSnapshot(collection(db, "chat"), (snapshot) => {
+      chatBox.innerHTML = "";
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        let msgText = data.message
+          .replace(/\n/g, "<br>")
+          .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+        chatBox.innerHTML += `
+          <div style="margin-bottom:6px;">
+            <b>(${data.role}) ${data.name}</b>: ${msgText}
+            <br><small>${data.time}</small>
+          </div>`;
+      });
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+  }
+
+  // 🔹 登入監聽
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      document.getElementById("login-section").style.display = "none";
+      document.getElementById("app").style.display = "block";
+      document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
+
+      // 預設角色
+      const userRef = doc(db, "users", user.email);
+      const userDoc = await getDoc(userRef);
+      let role = "student";
+      if (!userDoc.exists()) {
+        await setDoc(userRef, { role: user.email === "chianghansen0302@gmail.com" ? "admin" : "student" });
+        role = user.email === "chianghansen0302@gmail.com" ? "admin" : "student";
+      } else {
+        role = userDoc.data().role;
+      }
+      window.userRole = role;
+
+      // 管理員 + 老師可以寫聯絡簿
+      if (role === "teacher" || role === "admin") {
+        document.getElementById("teacher-panel").style.display = "block";
+      }
+
+      loadNotes();
+      renderChat();
+    }
   });
 
-  // 🔹 送出訊息
-  sendBtn.onclick = async () => {
-    const user = auth.currentUser;
-    if (!user) return alert("請先登入！");
-    const text = chatInput.value.trim();
-    if (!text) return;
-    await addDoc(collection(db, "chat"), {
-      name: user.displayName,
-      message: text,
-      role: "學生", // 可以根據你的登入權限自動指定
-      time: serverTimestamp(), // ✅ 用 Timestamp 儲存
-    });
-    chatInput.value = "";
-  };
+  // 🔹 綁定按鈕
+  window.googleLogin = googleLogin;
+  window.logout = logout;
+  window.addNote = addNote;
+  window.sendMessage = sendMessage;
 </script>
