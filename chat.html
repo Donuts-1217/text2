@@ -1,124 +1,52 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<title>💬 即時聊天室</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body { font-family: "微軟正黑體"; background: #eef2f7; text-align: center; padding: 20px; }
-#chat-box { background: white; max-width: 600px; margin: 0 auto; padding: 10px; border-radius: 10px; height: 70vh; overflow-y: auto; box-shadow: 0 0 8px rgba(0,0,0,0.1); }
-.message { text-align: left; margin: 8px 0; padding: 8px; border-radius: 8px; background: #f7f9fc; white-space: pre-wrap; }
-.self { background: #d8eafd; text-align: right; }
-small { color: gray; font-size: 12px; }
-input, button { padding: 8px; border-radius: 6px; border: 1px solid #ccc; }
-button { background: #4285F4; color: white; border: none; cursor: pointer; margin-left: 4px; }
-button:hover { background: #3367D6; }
-a { color: #4285F4; text-decoration: none; }
-a:hover { text-decoration: underline; }
-</style>
-</head>
-<body>
-
-<h2>💬 即時聊天室</h2>
-<div id="login-section">
-  <button onclick="googleLogin()">使用 Google 登入</button>
-</div>
-
-<div id="chat-section" style="display:none;">
-  <p id="user-info"></p>
-  <button onclick="logout()">登出</button>
-  <button onclick="window.location='index.html'">📘 返回聯絡簿</button>
-
-  <div id="chat-box"></div>
-  <div style="margin-top:10px;">
-    <input type="text" id="msg-input" placeholder="輸入訊息..." style="width:70%;">
-    <button onclick="sendMessage()">送出</button>
-  </div>
-</div>
+<div id="chat-box" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;"></div>
+<input id="chat-input" placeholder="輸入訊息..." />
+<button id="send-btn">送出</button>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
-  authDomain: "text-585a6.firebaseapp.com",
-  projectId: "text-585a6",
-  storageBucket: "text-585a6.firebasestorage.app",
-  messagingSenderId: "789195223699",
-  appId: "1:789195223699:web:847902083fb646bda25366",
-  measurementId: "G-FL11M47EFP"
-};
+  const firebaseConfig = {
+    apiKey: "你的 apiKey",
+    authDomain: "你的 authDomain",
+    projectId: "你的 projectId",
+  };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-let currentUser = null;
-let currentUserRole = "student";
+  const chatBox = document.getElementById("chat-box");
+  const chatInput = document.getElementById("chat-input");
+  const sendBtn = document.getElementById("send-btn");
 
-function linkify(text){
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
-}
-
-async function googleLogin(){ try{ await signInWithPopup(auth, provider);}catch(e){ alert("登入失敗："+e.message);} }
-async function logout(){ await signOut(auth); location.reload(); }
-
-async function sendMessage(){
-  const input=document.getElementById("msg-input");
-  const msg=input.value.trim();
-  if(!msg)return;
-  await addDoc(collection(db,"chat"),{
-    user:currentUser.displayName,
-    email:currentUser.email,
-    role:currentUserRole,
-    msg:msg,
-    time:new Date().toLocaleString()
-  });
-  input.value="";
-}
-
-function renderMessage(data){
-  const prefix = data.role==="admin" ? "(管理員)" : data.role==="teacher" ? "(老師)" : "(學生)";
-  const cls = (data.email===currentUser.email) ? "message self" : "message";
-  return `<div class="${cls}">
-            <b>${prefix} ${data.user}</b><br>${linkify(data.msg)}
-            <br><small>${data.time}</small>
-          </div>`;
-}
-
-onAuthStateChanged(auth, async(user)=>{
-  if(user){
-    currentUser=user;
-    document.getElementById("login-section").style.display="none";
-    document.getElementById("chat-section").style.display="block";
-    document.getElementById("user-info").innerText=`👋 歡迎 ${user.displayName}`;
-
-    const userRef=doc(db,"users",user.email);
-    const userDoc=await getDoc(userRef);
-    if(!userDoc.exists()){ await setDoc(userRef,{role:"student"}); currentUserRole="student"; }
-    else currentUserRole=userDoc.data().role;
-    if(user.email==="chianghansen0302@gmail.com"){ currentUserRole="admin"; await setDoc(userRef,{role:"admin"}); }
-
-    const chatQuery = query(collection(db, "chats"), orderBy("time", "asc"));
-
-    onSnapshot(chatQuery,(snapshot)=>{
-      const chatBox=document.getElementById("chat-box");
-      chatBox.innerHTML="";
-      snapshot.forEach(doc=>{
-        chatBox.innerHTML += renderMessage(doc.data());
-      });
-      chatBox.scrollTop=chatBox.scrollHeight;
+  // 🔹 監聽訊息變化
+  const chatQuery = query(collection(db, "chat"), orderBy("time", "asc"));
+  onSnapshot(chatQuery, (snapshot) => {
+    chatBox.innerHTML = "";
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const msg = document.createElement("div");
+      const date = data.time?.toDate().toLocaleString() || "";
+      msg.textContent = `[${data.role || "未知"}] ${data.name}: ${data.message} (${date})`;
+      chatBox.appendChild(msg);
     });
-  }
-});
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
 
-window.googleLogin=googleLogin;
-window.logout=logout;
-window.sendMessage=sendMessage;
+  // 🔹 送出訊息
+  sendBtn.onclick = async () => {
+    const user = auth.currentUser;
+    if (!user) return alert("請先登入！");
+    const text = chatInput.value.trim();
+    if (!text) return;
+    await addDoc(collection(db, "chat"), {
+      name: user.displayName,
+      message: text,
+      role: "學生", // 可以根據你的登入權限自動指定
+      time: serverTimestamp(), // ✅ 用 Timestamp 儲存
+    });
+    chatInput.value = "";
+  };
 </script>
-</body>
-</html>
