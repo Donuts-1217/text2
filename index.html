@@ -2,77 +2,51 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>聯絡簿與聊天室系統（最終版）</title>
+<title>聯絡簿與聊天室系統</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { font-family: "微軟正黑體"; background: #f2f5fa; text-align: center; padding: 20px; }
 h1 { color: #2c3e50; }
-button { padding: 6px 12px; margin: 4px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
+button { padding: 6px 12px; margin: 2px; background: #4285F4; color: white; border: none; border-radius: 6px; cursor: pointer; }
 button:hover { background: #3367D6; }
 textarea, input { width: 80%; max-width: 420px; margin-top: 5px; border-radius: 6px; border: 1px solid #ccc; padding: 6px; }
-#notes-section, #chat-box { margin-top: 20px; text-align: left; max-width: 800px; margin-left: auto; margin-right: auto; }
-.note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); word-break: break-word; }
-.reply-box { background: #eef5ff; padding: 10px; border-radius: 8px; margin-top: 8px; }
+#notes-section, #chat-box { margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; }
+.note { background: #fff; padding: 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.reply-box { background: #eef5ff; padding: 10px; border-radius: 8px; margin-top: 6px; }
 small { color: gray; }
 .hidden { display: none; }
-.user-manage { background:#fff; padding:12px; border-radius:10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); max-width:800px; margin: 10px auto; text-align:left; }
-.flex { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
-.tag { background:#eef5ff; color:#2b66d6; padding:2px 8px; border-radius:12px; font-size:12px; margin-left:6px; }
-.small-note { font-size:13px; color:#666; }
 </style>
 </head>
 <body>
 
-<h1>📘 聯絡簿系統（含角色管理）</h1>
+<h1>📘 聯絡簿與聊天室系統</h1>
 
-<!-- 登入區 -->
 <div id="login-section">
   <button onclick="googleLogin()">使用 Google 登入</button>
 </div>
 
-<!-- 主體 -->
-<div id="app" class="hidden">
-  <p id="user-info" class="small-note"></p>
-  <div class="flex">
-    <button onclick="logout()">登出</button>
-  </div>
+<div id="app" style="display:none;">
+  <p id="user-info"></p>
+  <button onclick="logout()">登出</button>
 
-  <!-- 使用者管理（管理員） - 顯示在聯絡簿上方 -->
-  <div id="user-manager" class="user-manage hidden">
-    <h3>👑 使用者管理（管理員專區）</h3>
-    <div id="user-list">正在載入使用者清單…</div>
-  </div>
-
-  <!-- 老師/管理員發佈 -->
-  <div id="teacher-panel" class="hidden" style="margin-top:12px;">
+  <div id="teacher-panel" style="display:none;">
     <h3>✏️ 寫聯絡簿</h3>
-    <textarea id="note" placeholder="輸入內容 (Shift+Enter 換行)。按 Enter 送出。"></textarea><br>
+    <textarea id="note" placeholder="輸入內容 (Shift+Enter 換行)..."></textarea><br>
     <button onclick="addNote()">送出</button>
   </div>
 
   <div id="notes-section">
     <h3>📜 聯絡簿紀錄</h3>
-    <div id="notes">載入中…</div>
-  </div>
-
-  <!-- 管理員可查看刪除紀錄 -->
-  <div id="deleted-panel" class="user-manage hidden" style="margin-top:12px;">
-    <h3>🗂️ 已刪除紀錄（管理員）</h3>
-    <div id="deleted-log">載入中…</div>
+    <div id="notes"></div>
   </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-import {
-  getFirestore, collection, addDoc, setDoc, doc, getDoc, getDocs,
-  onSnapshot, deleteDoc, updateDoc, query, orderBy, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, setDoc, doc, getDoc, onSnapshot, deleteDoc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-/* ------------------- Firebase 設定（你的） ------------------- */
+// Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyAPJ_QfW6IurPiSFg1yrcrr3eu2eoLMXqM",
   authDomain: "text-585a6.firebaseapp.com",
@@ -82,8 +56,6 @@ const firebaseConfig = {
   appId: "1:789195223699:web:847902083fb646bda25366",
   measurementId: "G-FL11M47EFP"
 };
-/* ----------------------------------------------------------- */
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -92,321 +64,133 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 let currentRole = "student";
 
-/* -------------------- 工具：格式化  -------------------- */
-function escapeHtml(str) {
-  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-function formatTextForSave(text) {
-  const esc = escapeHtml(text);
-  return esc.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>');
-}
-function formatTextForDisplay(storedHtml) {
-  return storedHtml || "";
+// Google 登入
+async function googleLogin() {
+  try { await signInWithPopup(auth, provider); } 
+  catch (e) { alert("登入失敗："+e.message); }
 }
 
-/* -------------------- 新增聯絡簿 -------------------- */
+// 登出
+async function logout() { await signOut(auth); location.reload(); }
+
+// 新增聯絡簿
 async function addNote() {
-  if (!(currentRole === "teacher" || currentRole === "admin")) {
-    alert("只有老師或管理員可以發布聯絡簿。");
-    return;
-  }
-  const ta = document.getElementById("note");
-  const raw = ta.value.trim();
-  if (!raw) return alert("請輸入內容！");
+  const content = document.getElementById("note").value.trim();
+  if (!content) return alert("請輸入內容！");
   await addDoc(collection(db, "notes"), {
-    author: currentUser.displayName || currentUser.email,
+    author: currentUser.displayName,
     email: currentUser.email,
-    content: formatTextForSave(raw),
-    createdAt: serverTimestamp(),
-    createdAtStr: new Date().toLocaleString()
+    content: content.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
+    reply: null,
+    time: new Date().toLocaleString()
   });
-  ta.value = "";
+  document.getElementById("note").value = "";
 }
 
-/* -------------------- 編輯聯絡簿 -------------------- */
-async function editNote(id) {
-  const ref = doc(db, "notes", id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return alert("找不到資料");
-  const data = snap.data();
-  // 將存的 HTML 轉回 plain text（簡單方式）
-  const plain = data.content.replace(/<br>/g, "\n").replace(/<a[^>]*>([^<]*)<\/a>/g, "$1").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&amp;/g,"&");
-  const newText = prompt("編輯聯絡簿內容：", plain);
-  if (newText === null) return;
-  await updateDoc(ref, {
-    content: formatTextForSave(newText),
-    editedAt: new Date().toLocaleString(),
-    editedBy: currentUser.displayName || currentUser.email
-  });
-}
+// 顯示聯絡簿
+function renderNotes() {
+  const notesEl = document.getElementById("notes");
+  const q = query(collection(db, "notes"), orderBy("time", "desc"));
+  onSnapshot(q, (snapshot) => {
+    notesEl.innerHTML = "";
+    snapshot.forEach((docItem) => {
+      const d = docItem.data();
+      // 學生只能看到自己的回覆
+      if (currentRole === "student" && d.reply && d.reply.target !== currentUser.email) return;
 
-/* -------------------- 刪除聯絡簿（記錄 deleted_log） -------------------- */
-async function deleteNoteConfirmed(id) {
-  if (!confirm("確定要刪除此聯絡簿？")) return;
-  const ref = doc(db, "notes", id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) { alert("找不到資料"); return; }
-  const d = snap.data();
-  // 記錄刪除
-  await addDoc(collection(db, "deleted_log"), {
-    type: "note",
-    noteId: id,
-    originalAuthor: d.author,
-    originalEmail: d.email,
-    originalContent: d.content,
-    originalTime: d.createdAtStr || d.time || "",
-    deletedBy: currentUser.displayName || currentUser.email,
-    deletedByEmail: currentUser.email,
-    deletedByRole: currentRole,
-    deletedAt: new Date().toLocaleString()
-  });
-  // 刪除
-  await deleteDoc(ref);
-}
-
-/* -------------------- 回覆（老師/管理員） - 私密回覆給學生 -------------------- */
-async function replyNotePrivate(noteId, targetEmail) {
-  if (!(currentRole === "teacher" || currentRole === "admin")) {
-    alert("只有老師或管理員可以回覆。"); return;
-  }
-  const text = prompt(`輸入要回覆給 ${targetEmail}（這是私人回覆，只有該學生與老師/管理員可見）：`);
-  if (!text) return;
-  await addDoc(collection(db, "notes", noteId, "replies"), {
-    author: currentUser.displayName || currentUser.email,
-    authorEmail: currentUser.email,
-    content: formatTextForSave(text),
-    visibility: "private", // private → 只有 target + teacher/admin 可見
-    toEmail: targetEmail,
-    createdAt: serverTimestamp(),
-    createdAtStr: new Date().toLocaleString()
-  });
-  alert("已送出私密回覆。");
-}
-
-/* -------------------- 刪除回覆（老師/管理員） -------------------- */
-async function deleteReplyConfirmed(noteId, replyId) {
-  if (!confirm("確定刪除此回覆？")) return;
-  const ref = doc(db, "notes", noteId, "replies", replyId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) { alert("找不到回覆"); return; }
-  const data = snap.data();
-  // 記錄 deleted_log
-  await addDoc(collection(db, "deleted_log"), {
-    type: "reply",
-    noteId,
-    replyId,
-    original: data,
-    deletedBy: currentUser.displayName || currentUser.email,
-    deletedByEmail: currentUser.email,
-    deletedByRole: currentRole,
-    deletedAt: new Date().toLocaleString()
-  });
-  await deleteDoc(ref);
-}
-
-/* -------------------- 產生 notes 列表（即時） -------------------- */
-function renderNotesRealtime() {
-  const notesContainer = document.getElementById("notes");
-  notesContainer.innerHTML = "載入中…";
-  const q = query(collection(db, "notes"), orderBy("createdAt", "desc"));
-  onSnapshot(q, async (snapshot) => {
-    notesContainer.innerHTML = "";
-    for (const docItem of snapshot.docs) {
-      const id = docItem.id;
-      const note = docItem.data();
-      // 建立回覆列表（fetch replies）
-      const repliesSnap = await getDocs(collection(db, "notes", id, "replies"));
-      let repliesHTML = "";
-      for (const r of repliesSnap.docs) {
-        const rd = r.data();
-        // visibility: "public"/"internal"/"private"
-        // Show logic:
-        // - public: anyone sees
-        // - internal: only teacher/admin see
-        // - private: only teacher/admin and toEmail see
-        let visible = false;
-        if (!rd.visibility || rd.visibility === "public") visible = true;
-        else if (rd.visibility === "internal" && (currentRole === "teacher" || currentRole === "admin")) visible = true;
-        else if (rd.visibility === "private" && (currentRole === "teacher" || currentRole === "admin" || (currentUser && currentUser.email === rd.toEmail))) visible = true;
-
-        if (visible) {
-          const delBtn = (currentRole === "teacher" || currentRole === "admin") ? `<button onclick="deleteReplyConfirmed('${id}','${r.id}')">刪除回覆</button>` : "";
-          repliesHTML += `
-            <div class="reply-box">
-              <div><b>${rd.author}</b> ${rd.visibility ? `<span class="tag">${rd.visibility}</span>` : ""}</div>
-              <div>${formatTextForDisplay(rd.content)}</div>
-              <small>${rd.createdAtStr || ""}</small>
-              ${delBtn}
-            </div>`;
-        }
+      let buttons = "";
+      if (currentRole === "teacher" || currentRole === "admin") {
+        buttons = `
+          <button onclick="editNote('${docItem.id}', '${d.content.replace(/'/g, "\\'")}')">編輯</button>
+          <button onclick="deleteNote('${docItem.id}', '${d.content.replace(/'/g, "\\'")}')">刪除</button>
+          <button onclick="replyNote('${docItem.id}', '${d.email}')">回覆</button>`;
       }
 
-      // decide whether to render note for this user:
-      // notes are visible to everyone (teacher posts), but if you want different rule adjust here.
-      // show reply controls only to teacher/admin
-      const controlsForTeacher = (currentRole === "teacher" || currentRole === "admin") ?
-        `<div style="margin-top:8px">
-           <button onclick="editNote('${id}')">編輯</button>
-           <button onclick="deleteNoteConfirmed('${id}')">刪除</button>
-           <button onclick="replyNotePrivate('${id}','${note.email}')">回覆給學生</button>
-         </div>` : "";
+      const replyHTML = d.reply ? `
+        <div class="reply-box">
+          <b>${d.reply.from}</b>：${d.reply.content}<br>
+          <small>${d.reply.time}</small>
+        </div>` : "";
 
-      // For student: they shall see the note; but replies only visible according to above logic.
-      notesContainer.innerHTML += `
+      notesEl.innerHTML += `
         <div class="note">
-          <div class="small-note"><b>${note.author}</b> <span style="color:#666">(${note.email})</span></div>
-          <div style="margin-top:8px;">${formatTextForDisplay(note.content)}</div>
-          <small>${note.createdAtStr || ""}${note.editedAt ? ` · 編輯：${note.editedAt} (${note.editedBy||""})` : ""}</small>
-          ${controlsForTeacher}
-          ${repliesHTML}
+          <b>${d.author}</b> (${d.email})<br>
+          ${d.content}<br>
+          ${replyHTML}
+          <small>${d.time}</small><br>
+          ${buttons}
         </div>`;
+    });
+  });
+}
+
+// 編輯
+async function editNote(id, oldContent) {
+  const newText = prompt("請輸入新的內容：", oldContent.replace(/<br>/g, "\n"));
+  if (newText !== null) {
+    await updateDoc(doc(db, "notes", id), {
+      content: newText.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>')
+    });
+  }
+}
+
+// 刪除
+async function deleteNote(id, content) {
+  if (!confirm("確定要刪除這則聯絡簿嗎？")) return;
+  await addDoc(collection(db, "deleted_log"), {
+    deletedBy: currentUser.displayName,
+    content,
+    time: new Date().toLocaleString()
+  });
+  await deleteDoc(doc(db, "notes", id));
+}
+
+// 回覆（僅學生本人可見）
+async function replyNote(id, targetEmail) {
+  const text = prompt("請輸入回覆內容：");
+  if (!text) return;
+  await updateDoc(doc(db, "notes", id), {
+    reply: {
+      from: currentUser.displayName,
+      target: targetEmail,
+      content: text.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'),
+      time: new Date().toLocaleString()
     }
   });
 }
 
-/* -------------------- 使用者管理（管理員） -------------------- */
-function renderUserList() {
-  const listEl = document.getElementById("user-list");
-  listEl.innerHTML = "載入中…";
-  onSnapshot(collection(db, "users"), (snapshot) => {
-    listEl.innerHTML = "";
-    snapshot.forEach((d) => {
-      const email = d.id;
-      const data = d.data();
-      const role = data.role || "student";
-      // safe id for select
-      const selectId = `role-select-${email.replace(/[@.]/g,'_')}`;
-      listEl.innerHTML += `
-        <div style="padding:8px; border-bottom:1px solid #eee;">
-          <div><b>${email}</b></div>
-          <div style="margin-top:6px;">
-            <select id="${selectId}" onchange="updateUserRole('${email}')">
-              <option value="student" ${role==='student'?'selected':''}>學生</option>
-              <option value="teacher" ${role==='teacher'?'selected':''}>老師</option>
-              <option value="admin" ${role==='admin'?'selected':''}>管理員</option>
-            </select>
-          </div>
-        </div>`;
-    });
-  });
-}
-window.updateUserRole = async function(email) {
-  const id = `role-select-${email.replace(/[@.]/g,'_')}`;
-  const sel = document.getElementById(id);
-  if (!sel) return;
-  const newRole = sel.value;
-  await setDoc(doc(db, "users", email), { role: newRole }, { merge: true });
-  alert(`已將 ${email} 設為 ${newRole}`);
-};
-
-/* -------------------- 顯示 deleted_log（管理員） -------------------- */
-function renderDeletedLog() {
-  const el = document.getElementById("deleted-log");
-  el.innerHTML = "載入中…";
-  const q = query(collection(db, "deleted_log"), orderBy("deletedAt","desc"));
-  onSnapshot(q, (snapshot) => {
-    el.innerHTML = "";
-    snapshot.forEach((d) => {
-      const data = d.data();
-      el.innerHTML += `
-        <div class="note">
-          <div><b>刪除者</b>：${data.deletedBy} (${data.deletedByRole || ''})</div>
-          <div style="margin-top:6px;"><b>內容</b>：${data.originalContent || JSON.stringify(data.original || '')}</div>
-          <small>${data.deletedAt || ''}</small>
-        </div>`;
-    });
-  });
-}
-
-/* -------------------- Auth 狀態處理 -------------------- */
+// 登入狀態監聽
 onAuthStateChanged(auth, async (user) => {
-  const loginSection = document.getElementById("login-section");
-  const app = document.getElementById("app");
-  if (!loginSection || !app) return;
+  if (!user) return;
+  currentUser = user;
+  document.getElementById("login-section").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName}`;
 
-  if (user) {
-    currentUser = user;
-    loginSection.classList.add("hidden");
-    app.classList.remove("hidden");
-    document.getElementById("user-info").innerText = `👋 歡迎 ${user.displayName || user.email}`;
-
-    // ensure user doc exists
-    const userRef = doc(db, "users", user.email);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
-      // special admin default
-      const role = (user.email === "chianghansen0302@gmail.com") ? "admin" : "student";
-      await setDoc(userRef, { role });
-      currentRole = role;
-    } else {
-      currentRole = userSnap.data().role || "student";
-    }
-
-    // show teacher panel to teacher/admin
-    if (currentRole === "teacher" || currentRole === "admin") {
-      document.getElementById("teacher-panel").classList.remove("hidden");
-    } else {
-      document.getElementById("teacher-panel").classList.add("hidden");
-    }
-
-    // show user manager only to admin
-    if (currentRole === "admin") {
-      document.getElementById("user-manager").classList.remove("hidden");
-      document.getElementById("deleted-panel").classList.remove("hidden");
-      renderUserList();
-      renderDeletedLog();
-    } else {
-      document.getElementById("user-manager").classList.add("hidden");
-      document.getElementById("deleted-panel").classList.add("hidden");
-    }
-
-    // start realtime rendering
-    renderNotesRealtime();
+  const userRef = doc(db, "users", user.email);
+  const userDoc = await getDoc(userRef);
+  if (!userDoc.exists()) {
+    const role = user.email === "chianghansen0302@gmail.com" ? "admin" : "student";
+    await setDoc(userRef, { role });
+    currentRole = role;
   } else {
-    // logged out
-    currentUser = null;
-    currentRole = "student";
-    loginSection.classList.remove("hidden");
-    app.classList.add("hidden");
+    currentRole = userDoc.data().role;
   }
+
+  if (currentRole === "teacher" || currentRole === "admin") {
+    document.getElementById("teacher-panel").style.display = "block";
+  }
+
+  renderNotes();
 });
 
-/* -------------------- 登入 / 登出 函式 -------------------- */
-window.googleLogin = async function() {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (err) {
-    console.error(err);
-    alert("登入失敗：" + (err.message || err));
-  }
-};
-window.logout = async function() {
-  try { await signOut(auth); location.reload(); } catch(e){ console.error(e); }
-};
-
-/* -------------------- Enter / Shift+Enter 處理 (聯絡簿輸入) -------------------- */
-document.addEventListener("keydown", function(e) {
-  const el = document.activeElement;
-  if (!el) return;
-  if (el.id === "note" && e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    addNote();
-  }
-});
-
-/* -------------------- 匯出給 window（供按鈕呼叫） -------------------- */
+// 綁定全域
+window.googleLogin = googleLogin;
+window.logout = logout;
 window.addNote = addNote;
 window.editNote = editNote;
-window.deleteNoteConfirmed = deleteNoteConfirmed;
-window.replyNotePrivate = replyNotePrivate;
-window.deleteReplyConfirmed = deleteReplyConfirmed;
-window.renderUserList = renderUserList;
-window.renderDeletedLog = renderDeletedLog;
-
-/* -------------------- 輔助載入函式 -------------------- */
-import { getDocs } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"; // ensure getDocs available
-// renderDeletedLog & renderUserList are called only for admin inside auth handler
-
+window.deleteNote = deleteNote;
+window.replyNote = replyNote;
 </script>
 </body>
 </html>
